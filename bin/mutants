@@ -1,0 +1,223 @@
+#!/usr/bin/env node
+'use strict';
+// Gate G6 — diff-scoped mutation testing, Google shape. Flip one operator per ADDED line and expect the
+// task's scoped test suite to report a failing test for every mutant. A survivor is a review item: kill
+// it with a test or mark it --equivalent with a reason; both land in the PR. There is no kill-rate
+// threshold (ADR-0004).
+// Usage: mutants <base-ref> "<test command>" [max=6] [--roots a,b] [--skip-baseline] [--timeout <s>]
+//        [--timeout-kills] [--fail-regex <re>] [--equivalent <file>:<line>=<reason>]... [--exclude <re>]...
+//   A kill = exit ≠ 0 AND stdout matches --fail-regex (default mocha/jest/vitest/node:test grammars).
+//   Exit ≠ 0 without a failing line is INCONCLUSIVE (a crash or a wrong cwd is not a kill).
+//   Zero candidates → pass:null NO_TARGETS, never PASS. The command runs from the app root that owns the
+//   first candidate; a spec path in the command that does not exist there is SPEC_NOT_FOUND.
+// Operators AOR/LCR/ROR/UOI/SBR; ≤ 1 mutant per added line; arid lines (logging, metrics, imports,
+// type-only) never mutated; sample spread round-robin across files. Every mutation is journalled with
+// the hash of the mutated content before the file is touched, so a killed run is repaired next time and
+// a stale journal from another branch is reported, never applied.
+// Provenance: Petrović & Ivanković, ICSE-SEIP 2018; Petrović, Ivanković, Fraser & Just, ICSE 2021;
+// Just et al., FSE 2014; Inozemtseva & Holmes, ICSE 2014; DeMillo, Lipton & Sayward, 1978.
+
+const { spawnSync, execSync } = require('node:child_process');
+const path = require('node:path');
+const fs = require('node:fs');
+const crypto = require('node:crypto');
+const { parseArgs } = require('../lib/result');
+const { changedFiles } = require('../lib/git');
+
+const NAME = 'MUTANTS';
+const started = Date.now();
+const out = (r) => { console.log(`${NAME}_RESULT ${JSON.stringify({ ok: true, ...r, ms: Date.now() - started })}`); process.exit(r.ok === false ? 2 : r.pass === false ? 1 : 0); };
+
+const { positional, flags } = parseArgs(process.argv.slice(2), { booleans: ['skip-baseline', 'timeout-kills'], multi: ['equivalent', 'exclude'] });
+const ref = positional[0];
+const testCmd = positional[1];
+const MAX = parseInt(positional[2] || '6', 10);
+if (!ref || !testCmd || !Number.isInteger(MAX) || MAX < 1) out({ ok: false, pass: null, code: 'BAD_ARGS', message: 'usage: mutants <base-ref> "<test command>" [max>=1] [--roots a,b] [--skip-baseline] [--timeout <s>] [--timeout-kills] [--fail-regex <re>] [--equivalent <file>:<line>=<reason>]... [--exclude <re>]...' });
+
+const FAIL_RE = new RegExp(flags['fail-regex'] || /\b[1-9]\d* failing\b|Tests:\s+[1-9]\d* failed|\b[1-9]\d* failed\b|^# fail [1-9]/m);
+const EQUIVALENT = new Map((flags.equivalent || []).map((s) => { const m = s.match(/^(.+?):(\d+)=(.+)$/); return m ? [`${m[1]}:${m[2]}`, m[3]] : null; }).filter(Boolean));
+const EXCLUDE = [/\.(spec|test)\.[cm]?[jt]sx?$/, /(^|\/)(__tests__|test|tests|e2e|migrations|fixtures)\//, /\.d\.ts$/, /(^|\/)(dist|build|node_modules)\//, ...(flags.exclude || []).map((s) => new RegExp(s))];
+const TIMEOUT_KILLS = !!flags['timeout-kills'];
+
+// On Windows execSync defaults to cmd.exe, which cannot parse a POSIX env prefix (`VAR=1 cmd`); route
+// through bash when present so the same command string works on every platform.
+const SHELL = process.platform === 'win32' && (() => { try { execSync('bash -c "exit 0"', { stdio: 'ignore' }); return true; } catch (e) { return false; } })() ? 'bash' : true;
+
+const { root: REPO, base, files } = changedFiles(ref, { exts: ['.ts', '.tsx', '.js', '.mjs', '.cjs'] });
+const ROOTS = flags.roots ? flags.roots.split(',').map((s) => s.trim()).filter(Boolean) : null;
+const inRoots = (p) => !ROOTS || ROOTS.some((r) => r === '.' || p.startsWith(`${r}/`));
+const targets = files.filter((f) => f.added.length > 0 && inRoots(f.path) && !EXCLUDE.some((re) => re.test(f.path)) && fs.existsSync(path.join(REPO, f.path)));
+
+// ---- journal: repair a killed run, refuse a stale one ------------------------------------------------
+const JOURNAL = path.join(REPO, '.claude', '.cache', 'mutants-journal.json');
+const sha1 = (s) => crypto.createHash('sha1').update(s).digest('hex');
+const gitLine = (cmd) => { try { return execSync(cmd, { cwd: REPO, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim(); } catch (e) { return ''; } };
+const journalRead = () => { try { const j = JSON.parse(fs.readFileSync(JOURNAL, 'utf8')); return j && j.files ? j : { files: {} }; } catch (e) { return { files: {} }; } };
+function journalSave(j) {
+  if (!Object.keys(j.files).length && !Object.keys(j.stale || {}).length) { try { fs.unlinkSync(JOURNAL); } catch (e) { /* gone */ } return; }
+  fs.mkdirSync(path.dirname(JOURNAL), { recursive: true });
+  fs.writeFileSync(JOURNAL, JSON.stringify(j));
+}
+function journalWrite(file, original, mutated) { const j = journalRead(); j.branch = gitLine('git branch --show-current'); j.headSha = gitLine('git rev-parse HEAD'); j.files[file] = { original, mutatedSha1: sha1(mutated) }; journalSave(j); }
+function journalClear(file) { const j = journalRead(); delete j.files[file]; journalSave(j); }
+(function recoverJournal() {
+  const j = journalRead();
+  for (const [file, entry] of Object.entries(j.files)) {
+    let current = null;
+    try { current = fs.readFileSync(path.join(REPO, file), 'utf8'); } catch (e) { /* gone */ }
+    if (current !== null && entry && sha1(current) === entry.mutatedSha1) {
+      fs.writeFileSync(path.join(REPO, file), entry.original);
+      console.log(`RECOVERED  ${file}  (restored from a prior run that was killed mid-mutation)`);
+    } else {
+      j.stale = j.stale || {};
+      j.stale[file] = { ...entry, branch: j.branch, headSha: j.headSha };
+      console.log(`JOURNAL_STALE ${file}  (journalled on ${j.branch || '?'} @ ${(j.headSha || '').slice(0, 9)}; file no longer holds that mutation — left untouched, entry kept under "stale")`);
+    }
+    delete j.files[file];
+  }
+  journalSave(j);
+})();
+
+const dirty = new Map();
+function restoreAll() { for (const [file, original] of dirty) { try { fs.writeFileSync(file, original); } catch (e) { /* best effort */ } journalClear(path.relative(REPO, file).replace(/\\/g, '/')); } dirty.clear(); }
+process.on('exit', restoreAll);
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) process.on(sig, () => { restoreAll(); process.exit(130); });
+process.on('uncaughtException', (e) => { restoreAll(); out({ ok: false, pass: null, code: 'CRASHED', message: String((e && e.message) || e) }); });
+
+// ---- cwd: the app root that owns the first candidate; the named spec must exist there ---------------
+let appRoot = REPO;
+if (targets.length) {
+  const top = targets[0].path.split('/')[0];
+  if (ROOTS ? ROOTS.includes(top) : (fs.existsSync(path.join(REPO, top, 'package.json')) && !fs.existsSync(path.join(REPO, 'package.json')))) appRoot = path.join(REPO, top);
+  if (flags.roots && ROOTS.includes(top)) appRoot = path.join(REPO, top);
+}
+const cwdRel = path.relative(REPO, appRoot).replace(/\\/g, '/') || '.';
+for (const spec of testCmd.match(/[^\s"']+\.(spec|test)\.[cm]?[jt]sx?/g) || []) {
+  if (!fs.existsSync(path.join(appRoot, spec))) out({ ok: false, pass: null, code: 'SPEC_NOT_FOUND', path: spec, cwd: cwdRel });
+}
+
+let timeoutMs = (parseInt(flags.timeout || '300', 10) || 300) * 1000;
+function runTests() {
+  const t0 = Date.now();
+  const r = spawnSync(testCmd, { cwd: appRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'], shell: SHELL, timeout: timeoutMs });
+  const timedOut = !!(r.error && r.error.code === 'ETIMEDOUT');
+  return { status: timedOut ? -1 : (r.status == null ? 1 : r.status), stdout: String(r.stdout || '') + String(r.stderr || ''), timedOut, ms: Date.now() - t0 };
+}
+
+// ---- typescript: nearest to the file, else the plugin's copy -------------------------------------------
+function loadTs(file) {
+  let dir = path.dirname(path.join(REPO, file));
+  for (;;) { try { return require(require.resolve('typescript', { paths: [dir] })); } catch (e) { const up = path.dirname(dir); if (up === dir) break; dir = up; } }
+  try { return require('typescript'); } catch (e) { return null; }
+}
+
+// ---- candidates ------------------------------------------------------------------------------------------
+const ROR = { '<': '>=', '<=': '>', '>': '<=', '>=': '<', '==': '!=', '!=': '==', '===': '!==', '!==': '===' };
+const LCR = { '&&': '||', '||': '&&' };
+const AOR = { '+': '-', '-': '+', '*': '/', '/': '*', '%': '*' };
+const PRIORITY = { ROR: 0, LCR: 1, AOR: 2, UOI: 3, SBR: 4 };
+const ARID_LINE = /^\s*(console\.|this\.logger?\.|logger\.|Logger\.|log\.|import\b|export\s+(type|interface)\b|type\s+\w+\s*=|interface\s+\w+)|\b(metrics?|telemetry|newrelic|Sentry|datadog|track|recordMetric|addCustomAttribute)\b/;
+
+const candidates = [];
+let tsMissing = 0;
+for (const f of targets) {
+  const ts = loadTs(f.path);
+  if (!ts) { tsMissing++; continue; }
+  const abs = path.join(REPO, f.path);
+  const src = fs.readFileSync(abs, 'utf8');
+  const sf = ts.createSourceFile(f.path, src, ts.ScriptTarget.Latest, true, f.path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const lines = src.split('\n');
+  const added = new Set(f.added);
+  const perLine = new Map();
+  const isStringy = (n) => ts.isStringLiteral(n) || ts.isTemplateExpression(n) || ts.isNoSubstitutionTemplateLiteral(n);
+  const inTypePosition = (node) => { for (let p = node.parent; p; p = p.parent) { if (ts.isTypeNode(p) || ts.isTypeAliasDeclaration(p) || ts.isInterfaceDeclaration(p)) return true; if (ts.isBlock(p) || ts.isSourceFile(p)) return false; } return false; };
+  const booleanContext = (node) => {
+    const p = node.parent; if (!p) return false;
+    if ((ts.isIfStatement(p) || ts.isWhileStatement(p) || ts.isDoStatement(p) || ts.isConditionalExpression(p)) && p.expression === node) return true;
+    if (ts.isForStatement(p) && p.condition === node) return true;
+    if (ts.isBinaryExpression(p) && LCR[p.operatorToken.getText(sf)]) return true;
+    if (ts.isPrefixUnaryExpression(p) && p.operator === ts.SyntaxKind.ExclamationToken) return true;
+    return false;
+  };
+  const consider = (node, op, from, to, pos, end) => {
+    const line = sf.getLineAndCharacterOfPosition(pos).line + 1;
+    if (!added.has(line) || ARID_LINE.test(lines[line - 1] || '') || inTypePosition(node)) return;
+    const c = { file: abs, rel: f.path, line, op, from, to, pos, end };
+    const prev = perLine.get(line);
+    if (!prev || PRIORITY[op] < PRIORITY[prev.op] || (PRIORITY[op] === PRIORITY[prev.op] && pos < prev.pos)) perLine.set(line, c);
+  };
+  (function visit(node) {
+    if (ts.isBinaryExpression(node)) {
+      const opText = node.operatorToken.getText(sf); const pos = node.operatorToken.getStart(sf); const end = node.operatorToken.getEnd();
+      if (ROR[opText]) consider(node, 'ROR', opText, ROR[opText], pos, end);
+      else if (LCR[opText]) consider(node, 'LCR', opText, LCR[opText], pos, end);
+      else if (AOR[opText] && !(opText === '+' && (isStringy(node.left) || isStringy(node.right)))) consider(node, 'AOR', opText, AOR[opText], pos, end);
+    } else if ((ts.isIdentifier(node) || ts.isPropertyAccessExpression(node)) && booleanContext(node)) {
+      consider(node, 'UOI', node.getText(sf), `!${node.getText(sf)}`, node.getStart(sf), node.getStart(sf));
+    } else if (node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword) {
+      const from = node.kind === ts.SyntaxKind.TrueKeyword ? 'true' : 'false';
+      consider(node, 'UOI', from, from === 'true' ? 'false' : 'true', node.getStart(sf), node.getEnd());
+    } else if (ts.isExpressionStatement(node)) {
+      const e = ts.isAwaitExpression(node.expression) ? node.expression.expression : node.expression;
+      if (ts.isCallExpression(e) && e.expression.kind !== ts.SyntaxKind.SuperKeyword) consider(node, 'SBR', node.getText(sf).slice(0, 60), ';', node.getStart(sf), node.getEnd());
+    }
+    ts.forEachChild(node, visit);
+  })(sf);
+  candidates.push(...[...perLine.values()].sort((a, b) => a.line - b.line));
+}
+
+if (targets.length && tsMissing === targets.length) out({ ok: false, pass: null, code: 'NO_TYPESCRIPT', cwd: cwdRel });
+if (candidates.length === 0) out({ pass: null, code: 'NO_TARGETS', cwd: cwdRel, base, baseline: 'skipped', candidates: 0, tried: 0, killed: 0, survivors: [], equivalent: [], inconclusive: 0, timeouts: 0 });
+
+// round-robin across files so one file cannot consume the whole budget
+const byFile = new Map();
+for (const c of candidates) { if (!byFile.has(c.rel)) byFile.set(c.rel, []); byFile.get(c.rel).push(c); }
+const picked = [];
+for (let i = 0; picked.length < Math.min(MAX, candidates.length); i++) {
+  const lists = [...byFile.values()];
+  const list = lists[i % lists.length];
+  if (list.length) picked.push(list.shift());
+  if (lists.every((l) => !l.length)) break;
+}
+
+// baseline: green, or asserted by the caller straight after a green G3 on this exact command
+let baseline;
+if (flags['skip-baseline']) baseline = 'asserted-by-caller';
+else {
+  const b = runTests();
+  if (b.status !== 0) out({ ok: false, pass: null, code: b.timedOut ? 'BASELINE_TIMEOUT' : 'BASELINE_RED', cwd: cwdRel, message: b.timedOut ? `test command did not finish within ${timeoutMs / 1000}s before any mutation` : 'test command fails before any mutation — fix the suite first' });
+  baseline = 'green';
+  timeoutMs = Math.max(2 * b.ms, 60000);
+}
+
+const survivors = []; const sampled = [];
+let killed = 0; let inconclusive = 0; let timeouts = 0;
+for (const m of picked) {
+  const original = fs.readFileSync(m.file, 'utf8');
+  const mutated = original.slice(0, m.pos) + m.to + original.slice(m.end);
+  sampled.push({ file: m.rel, line: m.line, op: m.op, from: m.from, to: m.to });
+  try {
+    dirty.set(m.file, original);
+    journalWrite(m.rel, original, mutated);
+    fs.writeFileSync(m.file, mutated);
+    const run = runTests();
+    if (run.timedOut) { timeouts++; if (TIMEOUT_KILLS) killed++; console.log(`TIMEOUT  ${m.rel}:${m.line}  ${m.op} ${m.from} -> ${m.to}  — no verdict within ${timeoutMs / 1000}s${TIMEOUT_KILLS ? ' (counted as killed: --timeout-kills)' : ''}`); }
+    else if (run.status === 0) survivors.push({ file: m.rel, line: m.line, op: m.op, from: m.from, to: m.to });
+    else if (FAIL_RE.test(run.stdout)) killed++;
+    else { inconclusive++; console.log(`INCONCLUSIVE  ${m.rel}:${m.line}  ${m.op} ${m.from} -> ${m.to}  — exit ${run.status} but no failing test in the output`); }
+  } finally {
+    fs.writeFileSync(m.file, original);
+    dirty.delete(m.file);
+    journalClear(m.rel);
+  }
+}
+
+const equivalent = [];
+for (let i = survivors.length - 1; i >= 0; i--) {
+  const sv = survivors[i]; const reason = EQUIVALENT.get(`${sv.file}:${sv.line}`);
+  if (reason) { equivalent.unshift({ ...sv, reason }); survivors.splice(i, 1); }
+}
+for (const sv of survivors) console.log(`SURVIVOR  ${sv.file}:${sv.line}  ${sv.op} ${sv.from} -> ${sv.to}  — no test failed; the behavior on this line is untested`);
+for (const eq of equivalent) console.log(`EQUIVALENT  ${eq.file}:${eq.line}  ${eq.op} ${eq.from} -> ${eq.to}  — accepted: ${eq.reason}`);
+const pass = survivors.length === 0 && inconclusive === 0 && (TIMEOUT_KILLS || timeouts === 0);
+out({ pass, ...(pass ? {} : { code: survivors.length ? 'SURVIVORS' : inconclusive ? 'INCONCLUSIVE' : 'TIMEOUTS' }), cwd: cwdRel, base, baseline, timeoutMs, candidates: candidates.length, tried: picked.length, killed, survivors, equivalent, inconclusive, timeouts, sampled });
