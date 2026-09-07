@@ -1,0 +1,81 @@
+#!/usr/bin/env node
+'use strict';
+// Hard gate — test tampering. Over test files changed vs the merge-base:
+//   removed-test          a removed it()/test()/describe() line that was not re-added elsewhere (moved tests are fine)
+//   skipped               an added .skip( / .only( / xit( / xdescribe(  (.only hides every other test)
+//   removed-assertion     a removed expect()/assert line that was not re-added
+//   changed-expectation   an expect(...).<matcher>(<literal>) whose literal changed and nothing else did
+//   empty-catch           an added `catch` with an empty body inside a test file
+//   removed-file          a deleted test file
+// Any finding → pass:false TEST_TAMPERED. --accept <file>:<line>=<reason> records a legitimate rewrite.
+// Usage: tamper <base-ref> [--accept <file>:<line>=<reason>]... [--test-glob <regex>]
+// Provenance: ImpossibleBench (Zhong, Raghunathan & Carlini 2025: 76% cheating rate by test modification);
+// METR 2025/2026; Zhang & Mesbah, ESEC/FSE 2015 (assertions predict suite effectiveness).
+
+const { emit, usage, parseArgs } = require('../lib/result');
+const { changedFiles, parseHunks, sh, repoRoot } = require('../lib/git');
+
+const NAME = 'TAMPER';
+const { positional, flags } = parseArgs(process.argv.slice(2), { multi: ['accept'] });
+const ref = positional[0];
+if (!ref) usage(NAME, 'usage: tamper <base-ref> [--accept <file>:<line>=<reason>]... [--test-glob <regex>]');
+
+const TEST_FILE = flags['test-glob'] ? new RegExp(flags['test-glob']) : /(\.(spec|test)\.[cm]?[jt]sx?$)|(^|\/)(__tests__|test|tests|e2e)\//;
+const TEST_DECL = /^\s*(it|test|describe|context|specify)(\.\w+)?\s*\(/;
+const SKIP = /\b(it|test|describe|context)\.(skip|only)\s*\(|\bx(it|test|describe)\s*\(|\b(fit|fdescribe)\s*\(/;
+const ASSERT = /^\s*(expect|assert|should)\b/;
+const EMPTY_CATCH = /catch\s*(\([^)]*\))?\s*\{\s*\}/;
+
+const norm = (s) => s.replace(/\s+/g, ' ').trim();
+// key for an expectation with its final argument removed: expect(x).to.equal(50) → expect(x).to.equal(
+const expectKey = (s) => { const n = norm(s); const i = n.lastIndexOf('('); return i > 0 ? n.slice(0, i + 1) : null; };
+
+const root = repoRoot();
+const { base, files } = changedFiles(ref);
+const testFiles = files.filter((f) => TEST_FILE.test(f.path) || (f.oldPath && TEST_FILE.test(f.oldPath)));
+const findings = [];
+
+// deleted test files: present at base, absent now
+const deleted = sh(`git diff ${base} --diff-filter=D --name-only`, root).split('\n').map((s) => s.trim()).filter((p) => p && TEST_FILE.test(p));
+for (const p of deleted) findings.push({ file: p, line: 0, kind: 'removed-file', text: p });
+
+for (const f of testFiles) {
+  if (f.untracked) continue; // a brand-new test file cannot weaken anything
+  const hunks = parseHunks(sh(`git diff ${base} -U0 --no-color -- ${JSON.stringify(f.path)}`, root));
+  const addedNorm = new Set(hunks.added.map((a) => norm(a.text)));
+  const addedKeys = new Map(hunks.added.filter((a) => ASSERT.test(a.text)).map((a) => [expectKey(a.text), norm(a.text)]));
+  // a test declaration re-added under the same title was modified (e.g. it → it.skip), not removed
+  const title = (s) => { const m = s.match(/\(\s*(['"`])(.*?)\1/); return m ? m[2] : null; };
+  const addedTitles = new Set(hunks.added.filter((a) => TEST_DECL.test(a.text)).map((a) => title(a.text)).filter(Boolean));
+  for (const r of hunks.removed) {
+    const n = norm(r.text);
+    if (addedNorm.has(n)) continue; // moved, not removed
+    if (TEST_DECL.test(r.text)) {
+      if (!addedTitles.has(title(r.text))) findings.push({ file: f.path, line: r.line, kind: 'removed-test', text: n });
+      continue;
+    }
+    if (ASSERT.test(r.text)) {
+      const k = expectKey(r.text);
+      if (k && addedKeys.has(k) && addedKeys.get(k) !== n) findings.push({ file: f.path, line: r.line, kind: 'changed-expectation', text: `${n}  →  ${addedKeys.get(k)}` });
+      else findings.push({ file: f.path, line: r.line, kind: 'removed-assertion', text: n });
+    }
+  }
+  for (const a of hunks.added) {
+    if (SKIP.test(a.text)) findings.push({ file: f.path, line: a.line, kind: 'skipped', text: norm(a.text) });
+    if (EMPTY_CATCH.test(a.text)) findings.push({ file: f.path, line: a.line, kind: 'empty-catch', text: norm(a.text) });
+  }
+}
+
+const accepted = [];
+const acceptSpecs = (flags.accept || []).map((s) => { const m = s.match(/^(.+?):(\d+)=(.*)$/); return m && { file: m[1], line: parseInt(m[2], 10), reason: m[3] }; }).filter(Boolean);
+const open = findings.filter((fd) => {
+  const a = acceptSpecs.find((s) => s.file === fd.file && s.line === fd.line);
+  if (a) { accepted.push({ ...fd, reason: a.reason }); return false; }
+  return true;
+});
+
+emit(NAME, {
+  pass: open.length === 0,
+  ...(open.length ? { code: 'TEST_TAMPERED' } : {}),
+  base, testFiles: testFiles.map((f) => f.path), findings: open, accepted,
+});
