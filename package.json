@@ -13,7 +13,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test \"test/**/*.test.js\"",
     "lint:commits": "node scripts/check-commit-msg.mjs --range",
     "lint:skills": "bash scripts/check-skills.sh",
     "prepare": "git config core.hooksPath .githooks"
