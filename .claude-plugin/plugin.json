@@ -1,13 +1,13 @@
 {
-  "name": "burden",
+  "name": "falsify",
   "description": "Takes a ticket to a pull request and refuses to skip the proof at any step: evidence before a branch, a failing probe before a fix, gates and a computed score before the PR.",
   "version": "0.0.0",
   "author": {
     "name": "Maksym Lyskov",
     "url": "https://github.com/maxymlyskov"
   },
-  "homepage": "https://github.com/maxymlyskov/burden",
-  "repository": "https://github.com/maxymlyskov/burden",
+  "homepage": "https://github.com/maxymlyskov/falsify",
+  "repository": "https://github.com/maxymlyskov/falsify",
   "license": "MIT",
   "keywords": ["claude-code", "agent-harness", "gates", "tdd", "mutation-testing", "code-review"]
 }

@@ -1,18 +1,18 @@
 ---
 name: setup
-description: Configure burden for this repository by interview — tracker, tests, base branch, UI, handoff — verifying every answer by running it. Once per repo.
+description: Configure falsify for this repository by interview — tracker, tests, base branch, UI, handoff — verifying every answer by running it. Once per repo.
 argument-hint: (no args)
 allowed-tools: Bash(git:*), Bash(gh:*), Bash(node:*), Bash(npx:*), Bash(npm:*), Bash(cat:*), Bash(ls:*), Read, Write
 disable-model-invocation: true
 ---
 
 ## Context
-- Output: `.claude/burden.config.json` (keys in `../task/references/recipes.md §config`). An existing file is read first; every question is pre-filled with its current value and the diff is printed before writing.
+- Output: `.claude/falsify.config.json` (keys in `../task/references/recipes.md §config`). An existing file is read first; every question is pre-filled with its current value and the diff is printed before writing.
 - Detection sources: `package.json` (scripts, devDependencies), lockfile, `tsconfig.json` (root and first-level dirs), `gh repo view --json defaultBranchRef`, `git remote`, `gh auth status`, env (`LINEAR_API_KEY`, `JIRA_*`), `docker-compose*.yml` under `test/`, `.env.example`, `CLAUDE.md`/`AGENTS.md` lines containing `always` / `never`.
 - Rule: nothing is written until every verification passed or the user explicitly accepted a failure (recorded as `"verified": "accepted-unverified: <why>"`). A skipped optional section makes the dependent gate report `[—] not configured` — never an error.
 
 ## Inputs
-- No arguments. Anything after `/burden:setup` is ignored.
+- No arguments. Anything after `/falsify:setup` is ignored.
 
 ## Steps
 Ask one question at a time, detected default first, recommendation and a one-line trade-off. Verify each answer by running it before the next question.
@@ -47,13 +47,13 @@ Ask one question at a time, detected default first, recommendation and a one-lin
                 clean} with their provenance from ../task/references/why.md; accept or change; a changed
                 threshold records `"provenance": "user-set: <reason>"`. Writes gates.
 11 Write        Print the full config and the diff vs the existing file. Confirm → write
-                `.claude/burden.config.json` with every `verified` field. Create `.claude/burden-qa-calibration.md`
+                `.claude/falsify.config.json` with every `verified` field. Create `.claude/falsify-qa-calibration.md`
                 from the template if absent. Add `.claude/.cache/` to .gitignore if missing.
 ```
 
 ## Output
 ```
-## /burden:setup
+## /falsify:setup
 tracker     <kind> — verified: <ticket> "<title>"
 test        <command> — verified: <spec> → <pass line>
 test db     <setup | none> · ready <check | none> · per-agent db <env | none> · migrations <db.url | none>
@@ -64,7 +64,7 @@ evidence    <n> read-only tools | none
 handoff     <pr | tracker | none> · docs <dir | none>
 rules       <n> invariants · <n> house rules · <n> fan-out rules
 gates       size <halt>/<warn> · complexity <c>/<g> · mutation <max>/<small> · fanout <conf>/<support>/<window> · regression <depth>/<max> · clean <command | none>
-Written: .claude/burden.config.json   Next: /burden:task <ticket>
+Written: .claude/falsify.config.json   Next: /falsify:task <ticket>
 ```
 
 ## Halt rules

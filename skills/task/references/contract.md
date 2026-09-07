@@ -1,4 +1,4 @@
-# The burden contract
+# The falsify contract
 
 An implementation-agnostic checklist. Port it into whatever harness you use — a slash command, a
 system prompt, a CI job, a checklist a human follows. The value is in the ordering and the halt

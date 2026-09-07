@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg viewBox="0 0 1000 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="how-it-works-title how-it-works-desc">
-      <title id="how-it-works-title">How a burden run goes</title>
+      <title id="how-it-works-title">How a falsify run goes</title>
       <desc id="how-it-works-desc">A ticket is investigated to a verdict; a confirmed defect is reproduced by one failing test before any branch exists; a worklist drives coders on isolated test databases; a battery of gates and a fresh QA agent loop until every gate passes; a computed score decides whether a pull request opens.</desc>
       <defs><style>@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap');</style>
         <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>

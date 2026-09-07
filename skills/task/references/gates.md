@@ -4,7 +4,7 @@ Every gate detects one named defect class, cannot pass while the property is fal
 and prints one `<NAME>_RESULT {json}` line the orchestrator appends to the run record with a tier.
 `pass:null` = could not measure (`code` says why) → the scorecard renders `[—]`, never PASS. Exit 0 on
 `pass:true|null`, 1 on `pass:false`, 2 on `ok:false`. `<base>` is `git.base` from
-`.claude/burden.config.json`; every script diffs from `git merge-base <base> HEAD` and includes untracked
+`.claude/falsify.config.json`; every script diffs from `git merge-base <base> HEAD` and includes untracked
 files. Commands below are written short as `<gate> …`; run them as `node "${CLAUDE_PLUGIN_ROOT}/bin/<gate>" …` (works from any shell tool; `bin/` is also on the Bash tool PATH while the plugin is enabled).
 
 Tier rule (written by the orchestrator when it records a gate): `A` = this run executed the measurement;

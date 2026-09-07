@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The only GitHub surface /burden:task may touch. Five verbs, nothing else:
+# The only GitHub surface /falsify:task may touch. Five verbs, nothing else:
 #   gh-cli pr-create --base <branch> --title <title> --body-file <file> [--draft]
 #   gh-cli pr-ready <n>
 #   gh-cli pr-checks <n> [--watch]

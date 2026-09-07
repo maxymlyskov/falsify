@@ -24,11 +24,11 @@ const path = require('node:path');
 const BIN = path.join(__dirname, '..', 'bin');
 
 function makeRepo(files = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'burden-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'falsify-'));
   const run = (cmd) => execSync(cmd, { cwd: dir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
   run('git init -q -b main');
-  run('git config user.email test@burden.local');
-  run('git config user.name burden-test');
+  run('git config user.email test@falsify.local');
+  run('git config user.name falsify-test');
   run('git config commit.gpgsign false');
   const write = (p, content) => {
     const f = path.join(dir, p);
