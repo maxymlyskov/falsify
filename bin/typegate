@@ -1,0 +1,88 @@
+#!/usr/bin/env node
+'use strict';
+// Gate G1 — types, compared against the base. Runs the type checker on the branch AND on the merge-base
+// (in a detached worktree that reuses node_modules), then diffs the error sets keyed by
+// file + code + message (line-insensitive). Pass ⇔ branch errors ⊆ base errors. "No errors in changed
+// files" is not the rule: a DTO type change errors in the unchanged consumer, and that is the bug.
+// Usage: typegate <base-ref> [--roots a,b] [--tsc "<command>"] [--no-cache]
+//   --roots  directories with a tsconfig.json (default: repo root if it has one, else each first-level dir that does)
+//   --tsc    checker command run inside each root (default: npx tsc --noEmit --pretty false -p .)
+// Provenance: Gao, Bird & Barr, ICSE 2017 — 15% of public JS bugs detectable by TypeScript (CI 11.5–18.5%).
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execSync } = require('node:child_process');
+const { emit, usage, parseArgs } = require('../lib/result');
+const { repoRoot, mergeBase } = require('../lib/git');
+
+const NAME = 'TYPES';
+const { positional, flags } = parseArgs(process.argv.slice(2), { booleans: ['no-cache'] });
+const ref = positional[0];
+if (!ref) usage(NAME, 'usage: typegate <base-ref> [--roots a,b] [--tsc "<command>"] [--no-cache]');
+
+const root = repoRoot();
+const base = mergeBase(ref, root);
+const TSC = flags.tsc || 'npx tsc --noEmit --pretty false -p .';
+const ERR = /^(.+?)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
+
+function detectRoots(dir) {
+  if (fs.existsSync(path.join(dir, 'tsconfig.json'))) return ['.'];
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules' && fs.existsSync(path.join(dir, d.name, 'tsconfig.json')))
+    .map((d) => d.name);
+}
+const roots = flags.roots ? flags.roots.split(',').map((s) => s.trim()).filter(Boolean) : detectRoots(root);
+if (roots.length === 0) emit(NAME, { pass: null, code: 'NO_TYPESCRIPT', message: 'no tsconfig.json found in repo root or first-level directories', base });
+
+function runChecker(dir) {
+  let out = '';
+  try { out = execSync(TSC, { cwd: dir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }); }
+  catch (e) { out = `${e.stdout || ''}${e.stderr || ''}`; if (!out.trim()) throw new Error(`checker failed with no output in ${dir}: ${e.message}`); }
+  const errors = [];
+  for (const line of out.split('\n')) {
+    const m = line.trim().match(ERR);
+    if (m) errors.push({ file: m[1].replace(/\\/g, '/'), line: parseInt(m[2], 10), code: m[4], message: m[5].trim() });
+  }
+  return errors;
+}
+const key = (e) => `${e.file}|${e.code}|${e.message}`;
+
+function checkTree(treeRoot) {
+  const all = [];
+  for (const r of roots) for (const e of runChecker(path.join(treeRoot, r))) all.push({ root: r, ...e });
+  return all;
+}
+
+// base errors: cached per merge-base sha (the base does not move during a run's repair rounds)
+const cacheFile = path.join(os.tmpdir(), `burden-typegate-${base}-${Buffer.from(root).toString('hex').slice(0, 16)}.json`);
+let baseErrors = null;
+if (!flags['no-cache'] && fs.existsSync(cacheFile)) { try { baseErrors = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch (e) { baseErrors = null; } }
+if (!baseErrors) {
+  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'burden-typegate-wt-'));
+  try {
+    execSync(`git worktree add --detach ${JSON.stringify(wt)} ${base}`, { cwd: root, stdio: 'ignore' });
+    for (const r of roots) {
+      const nm = path.join(root, r, 'node_modules');
+      const target = path.join(wt, r, 'node_modules');
+      if (fs.existsSync(nm) && !fs.existsSync(target)) fs.symlinkSync(nm, target, 'junction');
+    }
+    baseErrors = checkTree(wt);
+    fs.writeFileSync(cacheFile, JSON.stringify(baseErrors));
+  } finally {
+    try { execSync(`git worktree remove --force ${JSON.stringify(wt)}`, { cwd: root, stdio: 'ignore' }); } catch (e) { /* best effort */ }
+    try { fs.rmSync(wt, { recursive: true, force: true }); } catch (e) { /* best effort */ }
+  }
+}
+
+const branchErrors = checkTree(root);
+const baseKeys = new Set(baseErrors.map(key));
+const branchKeys = new Set(branchErrors.map(key));
+const fresh = branchErrors.filter((e) => !baseKeys.has(key(e)));
+const fixed = baseErrors.filter((e) => !branchKeys.has(key(e))).length;
+
+emit(NAME, {
+  pass: fresh.length === 0,
+  ...(fresh.length ? { code: 'NEW_ERRORS' } : {}),
+  base, roots, checker: TSC, baseCount: baseErrors.length, branchCount: branchErrors.length, fixed, new: fresh,
+});
