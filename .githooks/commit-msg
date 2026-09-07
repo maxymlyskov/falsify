@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Installed by `npm run prepare` (sets core.hooksPath). Rejects commits that break the Angular convention.
+exec node "$(git rev-parse --show-toplevel)/scripts/check-commit-msg.mjs" "$1"
