@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# The only GitHub surface /burden:task may touch. Five verbs, nothing else:
+#   gh-cli pr-create --base <branch> --title <title> --body-file <file> [--draft]
+#   gh-cli pr-ready <n>
+#   gh-cli pr-checks <n> [--watch]
+#   gh-cli pr-view <n>
+#   gh-cli issue-view <n>
+# No merge, no push, no --force, no repo verbs. Anything else prints USAGE and exits 2.
+# `gh pr create` pushes the current branch when it has no upstream; that is the one push this wrapper
+# allows, and only as part of opening a PR.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+USAGE: gh-cli {pr-create --base <b> --title <t> --body-file <f> [--draft] | pr-ready <n> | pr-checks <n> [--watch] | pr-view <n> | issue-view <n>}
+USAGE
+  exit 2
+}
+
+cmd="${1:-}"
+[ -n "$cmd" ] || usage
+shift || true
+
+is_num() { [[ "$1" =~ ^[0-9]+$ ]]; }
+
+case "$cmd" in
+  pr-create)
+    base=""; title=""; body=""; draft=()
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --base) base="${2:-}"; shift 2 ;;
+        --title) title="${2:-}"; shift 2 ;;
+        --body-file) body="${2:-}"; shift 2 ;;
+        --draft) draft=(--draft); shift ;;
+        *) usage ;;
+      esac
+    done
+    [ -n "$base" ] && [ -n "$title" ] && [ -n "$body" ] && [ -f "$body" ] || usage
+    exec gh pr create --base "$base" --title "$title" --body-file "$body" "${draft[@]}"
+    ;;
+  pr-ready)
+    is_num "${1:-}" || usage
+    exec gh pr ready "$1"
+    ;;
+  pr-checks)
+    is_num "${1:-}" || usage
+    n="$1"; shift
+    watch=()
+    if [ "${1:-}" = "--watch" ]; then watch=(--watch); shift; fi
+    [ $# -eq 0 ] || usage
+    exec gh pr checks "$n" "${watch[@]}"
+    ;;
+  pr-view)
+    is_num "${1:-}" || usage
+    exec gh pr view "$1" --json number,title,state,isDraft,url,headRefName,baseRefName,statusCheckRollup
+    ;;
+  issue-view)
+    is_num "${1:-}" || usage
+    exec gh issue view "$1" --json number,title,state,body,url,comments
+    ;;
+  *) usage ;;
+esac
