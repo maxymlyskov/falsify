@@ -27,8 +27,9 @@ trustworthy evidence in the run, placed at the most consequential point.
 - The score measures one construct: how much of the claimed confidence was executed this run. It does
   not claim to measure correctness, and the README says so.
 - Weights can be fitted once outcome tracking exists (out of scope for v0.1; the run record keeps the data).
-- Two `[B]` rows on important dimensions (e.g. Regression 15 + Fan-out 10 at 0.5) score 87.5 → MEDIUM.
-  That is the intended behaviour: inherited evidence on two axes is where PRs go wrong.
+- For a bug (denominator 110) one inherited row — Regression at `[B]` — scores 93.2, HIGH; two inherited
+  rows on important dimensions (Regression 15 + Fan-out 10 at 0.5) score 88.6 → MEDIUM. That is the
+  intended behaviour: inherited evidence on two axes is where PRs go wrong.
 
 ## Evidence
 
