@@ -1,0 +1,112 @@
+#!/usr/bin/env node
+'use strict';
+// Gate G4 — regression test selection. Every spec whose import closure (depth-bounded) reaches a changed
+// non-spec file is selected; a spec whose own lines changed is selected too. Above --max the safe answer
+// is the whole suite. Replaces "run whole-file only when the spec was edited", which let a SUT change
+// break pre-existing tests unnoticed.
+// Usage: select-specs <base-ref> [--roots a,b] [--depth 2] [--max 12] [--spec-glob <regex>]
+// Imports come from ts.preProcessFile and resolve through ts.resolveModuleName with the root's tsconfig,
+// so path aliases behave as the compiler sees them.
+// Provenance: Rothermel & Harrold, TOSEM 1997 (safe selection never omits a test that could expose the
+// regression); Gligoric, Eloussi & Marinov, ISSTA 2015 (Ekstazi: file-level dependencies suffice).
+
+const fs = require('node:fs');
+const path = require('node:path');
+const { emit, usage, parseArgs } = require('../lib/result');
+const { changedFiles } = require('../lib/git');
+
+const NAME = 'SELECT';
+const { positional, flags } = parseArgs(process.argv.slice(2));
+const ref = positional[0];
+const DEPTH = parseInt(flags.depth || '2', 10);
+const MAX = parseInt(flags.max || '12', 10);
+if (!ref || Number.isNaN(DEPTH) || Number.isNaN(MAX)) usage(NAME, 'usage: select-specs <base-ref> [--roots a,b] [--depth 2] [--max 12] [--spec-glob <regex>]');
+const SPEC = flags['spec-glob'] ? new RegExp(flags['spec-glob']) : /\.(spec|test)\.[cm]?[jt]sx?$/;
+
+const { root: repo, base, files } = changedFiles(ref, { exts: ['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts'] });
+function detectRoots() {
+  if (flags.roots) return flags.roots.split(',').map((s) => s.trim()).filter(Boolean);
+  if (fs.existsSync(path.join(repo, 'tsconfig.json')) || fs.existsSync(path.join(repo, 'package.json'))) return ['.'];
+  return fs.readdirSync(repo, { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules' && fs.existsSync(path.join(repo, d.name, 'tsconfig.json'))).map((d) => d.name);
+}
+const ROOTS = detectRoots().filter((r) => fs.existsSync(path.join(repo, r)));
+
+const changed = files.map((f) => f.path).filter((p) => fs.existsSync(path.join(repo, p)) && ROOTS.some((r) => r === '.' || p.startsWith(`${r}/`)));
+const changedNonSpec = new Set(changed.filter((p) => !SPEC.test(p)));
+const changedSpecs = new Set(changed.filter((p) => SPEC.test(p)));
+if (changed.length === 0) emit(NAME, { pass: null, code: 'NO_TARGETS', base, changed: [], specs: [], depth: DEPTH, max: MAX });
+
+function loadTs(dir) {
+  for (const d of [dir, repo]) { try { return require(require.resolve('typescript', { paths: [d] })); } catch (e) { /* next */ } }
+  try { return require('typescript'); } catch (e) { return null; }
+}
+function compilerOptions(ts, rootAbs) {
+  const cfg = path.join(rootAbs, 'tsconfig.json');
+  if (fs.existsSync(cfg)) {
+    const read = ts.readConfigFile(cfg, ts.sys.readFile);
+    if (!read.error) return ts.parseJsonConfigFileContent(read.config, ts.sys, rootAbs).options;
+  }
+  return { moduleResolution: ts.ModuleResolutionKind.NodeJs, allowJs: true, baseUrl: rootAbs };
+}
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'coverage', '.git']);
+const walk = (dir, out = []) => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(p, out); } else out.push(p);
+  }
+  return out;
+};
+const rel = (abs) => path.relative(repo, abs).replace(/\\/g, '/');
+
+const specs = [];
+let scanned = 0;
+let tsMissing = 0;
+for (const r of ROOTS) {
+  const rootAbs = path.resolve(repo, r);
+  const ts = loadTs(rootAbs);
+  if (!ts) { tsMissing++; continue; }
+  const options = compilerOptions(ts, rootAbs);
+  const importCache = new Map();
+  function importsOf(absFile) {
+    if (importCache.has(absFile)) return importCache.get(absFile);
+    const out = [];
+    let text = '';
+    try { text = fs.readFileSync(absFile, 'utf8'); } catch (e) { importCache.set(absFile, out); return out; }
+    for (const imp of ts.preProcessFile(text, true, false).importedFiles) {
+      const res = ts.resolveModuleName(imp.fileName, absFile, options, ts.sys).resolvedModule;
+      if (!res || res.isExternalLibraryImport || /node_modules/.test(res.resolvedFileName) || /\.d\.ts$/.test(res.resolvedFileName)) continue;
+      out.push(path.resolve(res.resolvedFileName));
+    }
+    importCache.set(absFile, out);
+    return out;
+  }
+  for (const specAbs of walk(rootAbs).filter((f) => SPEC.test(f.replace(/\\/g, '/')))) {
+    scanned++;
+    const specRel = rel(specAbs);
+    if (changedSpecs.has(specRel)) { specs.push({ spec: specRel, via: 'spec changed' }); continue; }
+    let frontier = [{ file: specAbs, chain: [] }];
+    const seen = new Set([specAbs]);
+    let hit = null;
+    for (let d = 1; d <= DEPTH && !hit; d++) {
+      const next = [];
+      for (const { file, chain } of frontier) {
+        for (const dep of importsOf(file)) {
+          if (seen.has(dep)) continue;
+          seen.add(dep);
+          const depRel = rel(dep);
+          const nextChain = [...chain, depRel];
+          if (changedNonSpec.has(depRel)) { hit = nextChain; break; }
+          next.push({ file: dep, chain: nextChain });
+        }
+        if (hit) break;
+      }
+      frontier = next;
+    }
+    if (hit) specs.push({ spec: specRel, via: hit.length === 1 ? 'direct import' : hit.join(' → ') });
+  }
+}
+
+if (scanned === 0 && tsMissing) emit(NAME, { pass: null, code: 'NO_TYPESCRIPT', base, changed, specs: [], depth: DEPTH, max: MAX });
+for (const s of specs) console.log(`SELECT  ${s.spec}  — ${s.via}`);
+if (specs.length > MAX) emit(NAME, { pass: true, base, changed, specs: 'ALL', reason: `selection exceeded max (${specs.length} > ${MAX})`, selected: specs.length, scanned, depth: DEPTH, max: MAX });
+emit(NAME, { pass: true, base, changed, specs, scanned, depth: DEPTH, max: MAX });
