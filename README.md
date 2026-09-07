@@ -14,8 +14,7 @@ reads high.
 /plugin install falsify@falsify
 ```
 
-The repository is private until v0.1.0, so these two lines work for its owner today and for everyone
-after the tag. Then, once per repository:
+Then, once per repository:
 
 ```
 /falsify:setup
@@ -64,8 +63,8 @@ Score 100 / 100 · Verdict HIGH · rounds 2 · wall 9m41s · weights: prior — 
 
 `scorecard` prints this block from the gates' JSON results; the model cannot edit it. `[A]` marks a
 measurement this run executed, `[B]` one it inherited or proxied. Two `[B]` rows on important dimensions
-bring the verdict down to medium. The block above comes from the scorecard's test fixture; a real run's
-block replaces it at v0.1.0.
+bring the verdict down to medium. The block above comes from the scorecard's test fixture; the first
+recorded run on a public repository replaces it.
 
 ## The gates
 
