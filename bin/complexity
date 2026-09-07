@@ -1,0 +1,190 @@
+#!/usr/bin/env node
+'use strict';
+// Gate G5 — complexity of functions touched by the diff vs the merge-base.
+// Cyclomatic (McCabe 1976 / NIST SP 500-235: 10) and cognitive (Campbell, SonarSource; the 15 is the
+// SonarQube S3776 default — a tool default, not an empirical result) per function. OVER when a NEW or
+// GROWN function exceeds either; PREEXISTING (report only) when the same key already carried at least
+// that value at base — a legacy codebase may not ADD complexity, it is not asked to pay old debt first.
+// Usage: complexity <base-ref> [--cyclomatic 10] [--cognitive 15] [--exclude <regex>]...
+// Resolves `typescript` by walking up from each changed file; falls back to the plugin's own copy.
+
+const path = require('node:path');
+const fs = require('node:fs');
+const { emit, usage, parseArgs } = require('../lib/result');
+const { changedFiles, readAt } = require('../lib/git');
+
+const NAME = 'COMPLEXITY';
+const { positional, flags } = parseArgs(process.argv.slice(2), { multi: ['exclude'] });
+const ref = positional[0];
+const THRESHOLDS = {
+  cyclomatic: parseInt(flags.cyclomatic || '10', 10),
+  cognitive: parseInt(flags.cognitive || '15', 10),
+  provenance: 'cyclomatic 10: McCabe 1976 / NIST SP 500-235; cognitive 15: SonarQube S3776 default (tool default, not empirical)',
+};
+if (!ref || Number.isNaN(THRESHOLDS.cyclomatic) || Number.isNaN(THRESHOLDS.cognitive)) usage(NAME, 'usage: complexity <base-ref> [--cyclomatic 10] [--cognitive 15] [--exclude <regex>]...');
+
+const EXCLUDE = [/\.(spec|test)\.[cm]?[jt]sx?$/, /(^|\/)(__tests__|test|tests|e2e|migrations|fixtures)\//, /\.d\.ts$/, /(^|\/)(dist|build|node_modules)\//,
+  ...(flags.exclude || []).map((s) => new RegExp(s))];
+
+const { root, base, files } = changedFiles(ref, { exts: ['.ts', '.tsx'] });
+const targets = files.filter((f) => f.added.length > 0 && !EXCLUDE.some((re) => re.test(f.path)) && fs.existsSync(path.join(root, f.path)));
+if (targets.length === 0) emit(NAME, { pass: null, code: 'NO_TARGETS', base, thresholds: THRESHOLDS, checked: 0, over: [], preexisting: [] });
+
+// typescript: nearest node_modules walking up from the file, else the plugin's own dev copy
+const tsCache = new Map();
+function loadTs(file) {
+  let dir = path.dirname(path.join(root, file));
+  for (;;) {
+    if (fs.existsSync(path.join(dir, 'node_modules', 'typescript'))) break;
+    const up = path.dirname(dir);
+    if (up === dir) { dir = null; break; }
+    dir = up;
+  }
+  const key = dir || '<plugin>';
+  if (!tsCache.has(key)) {
+    try { tsCache.set(key, dir ? require(require.resolve('typescript', { paths: [dir] })) : require('typescript')); }
+    catch (e) { tsCache.set(key, null); }
+  }
+  return tsCache.get(key);
+}
+
+const isFn = (ts, n) => ts.isFunctionDeclaration(n) || ts.isMethodDeclaration(n) || ts.isFunctionExpression(n) || ts.isArrowFunction(n) || ts.isConstructorDeclaration(n) || ts.isGetAccessorDeclaration(n) || ts.isSetAccessorDeclaration(n);
+const isLogical = (ts, n) => ts.isBinaryExpression(n) && (n.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken || n.operatorToken.kind === ts.SyntaxKind.BarBarToken);
+
+function cyclomatic(ts, node) {
+  let c = 1;
+  function walk(n) {
+    switch (n.kind) {
+      case ts.SyntaxKind.IfStatement: case ts.SyntaxKind.ForStatement: case ts.SyntaxKind.ForInStatement: case ts.SyntaxKind.ForOfStatement:
+      case ts.SyntaxKind.WhileStatement: case ts.SyntaxKind.DoStatement: case ts.SyntaxKind.CaseClause: case ts.SyntaxKind.CatchClause:
+      case ts.SyntaxKind.ConditionalExpression:
+        c++; break;
+      case ts.SyntaxKind.BinaryExpression: {
+        const op = n.operatorToken.kind;
+        if (op === ts.SyntaxKind.AmpersandAmpersandToken || op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.QuestionQuestionToken) c++;
+        break;
+      }
+      default: break;
+    }
+    if (n !== node && isFn(ts, n)) return; // a nested function is its own unit
+    ts.forEachChild(n, walk);
+  }
+  ts.forEachChild(node, walk);
+  return c;
+}
+
+// Cognitive complexity per the SonarSource white paper (Appendix): +1 per break in linear flow,
+// +nesting for structures that nest, +1 per else / else-if without nesting, +1 per sequence of like
+// logical operators, +1 per labelled break/continue. Nested functions are separate units.
+function cognitive(ts, node) {
+  let c = 0;
+  function seqStart(n) {
+    let p = n.parent;
+    while (p && ts.isParenthesizedExpression(p)) p = p.parent;
+    return !(p && isLogical(ts, p) && p.operatorToken.kind === n.operatorToken.kind);
+  }
+  function ifStatement(n, nesting, isElseIf) {
+    c += isElseIf ? 1 : 1 + nesting;
+    walk(n.expression, nesting);
+    walk(n.thenStatement, nesting + 1);
+    if (n.elseStatement) {
+      if (ts.isIfStatement(n.elseStatement)) ifStatement(n.elseStatement, nesting, true);
+      else { c += 1; walk(n.elseStatement, nesting + 1); }
+    }
+  }
+  function walk(n, nesting) {
+    if (n !== node && isFn(ts, n)) return;
+    switch (n.kind) {
+      case ts.SyntaxKind.IfStatement: return ifStatement(n, nesting, false);
+      case ts.SyntaxKind.ConditionalExpression:
+        c += 1 + nesting; walk(n.condition, nesting); walk(n.whenTrue, nesting + 1); walk(n.whenFalse, nesting + 1); return;
+      case ts.SyntaxKind.SwitchStatement:
+        c += 1 + nesting; walk(n.expression, nesting); walk(n.caseBlock, nesting + 1); return;
+      case ts.SyntaxKind.ForStatement: case ts.SyntaxKind.ForInStatement: case ts.SyntaxKind.ForOfStatement: case ts.SyntaxKind.WhileStatement: case ts.SyntaxKind.DoStatement:
+        c += 1 + nesting; ts.forEachChild(n, (ch) => walk(ch, ch === n.statement ? nesting + 1 : nesting)); return;
+      case ts.SyntaxKind.CatchClause:
+        c += 1 + nesting; walk(n.block, nesting + 1); return;
+      case ts.SyntaxKind.BreakStatement: case ts.SyntaxKind.ContinueStatement:
+        if (n.label) c += 1; break;
+      case ts.SyntaxKind.BinaryExpression:
+        if (isLogical(ts, n) && seqStart(n)) c += 1; break;
+      default: break;
+    }
+    ts.forEachChild(n, (ch) => walk(ch, nesting));
+  }
+  ts.forEachChild(node, (ch) => walk(ch, 0));
+  return c;
+}
+
+// Stable key: `Class.name` / `name` for named functions and members (class property arrows by property
+// name); `<enclosing key>#<ordinal>` for anonymous functions, so a new callback in fn B never inherits
+// the PREEXISTING status of an older callback in fn A.
+function ownName(ts, node, sf) {
+  if (node.name && node.name.getText) return node.name.getText(sf);
+  if (ts.isConstructorDeclaration(node)) return 'constructor';
+  const p = node.parent;
+  if (p && (ts.isVariableDeclaration(p) || ts.isPropertyAssignment(p) || ts.isPropertyDeclaration(p)) && p.name && p.name.getText) return p.name.getText(sf);
+  return null;
+}
+function className(ts, node, sf) {
+  for (let p = node.parent; p; p = p.parent) {
+    if (isFn(ts, p)) return null;
+    if ((ts.isClassDeclaration(p) || ts.isClassExpression(p)) && p.name && p.name.getText) return p.name.getText(sf);
+  }
+  return null;
+}
+
+function measure(ts, source, file, addedLines) {
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const out = new Map();
+  const ordinals = new Map();
+  const added = addedLines ? new Set(addedLines) : null;
+  let touched = 0;
+  function visit(node, enclosing) {
+    let key = enclosing;
+    if (isFn(ts, node) && node.body) {
+      const own = ownName(ts, node, sf);
+      if (own) { const cls = className(ts, node, sf); key = cls ? `${cls}.${own}` : own; }
+      else { const n = (ordinals.get(enclosing) || 0) + 1; ordinals.set(enclosing, n); key = `${enclosing}#${n}`; }
+      const start = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+      const end = sf.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
+      let isTouched = !added;
+      if (added) for (let l = start; l <= end && !isTouched; l++) if (added.has(l)) isTouched = true;
+      if (isTouched) {
+        touched++;
+        const entry = { cyclomatic: cyclomatic(ts, node), cognitive: cognitive(ts, node), line: start };
+        const prev = out.get(key);
+        if (!prev || entry.cyclomatic + entry.cognitive > prev.cyclomatic + prev.cognitive) out.set(key, entry);
+      }
+    }
+    ts.forEachChild(node, (ch) => visit(ch, key));
+  }
+  visit(sf, '<module>');
+  return { out, touched };
+}
+
+const over = []; const preexisting = [];
+let worst = null; let checked = 0; let tsMissing = 0;
+for (const f of targets) {
+  const ts = loadTs(f.path);
+  if (!ts) { tsMissing++; continue; }
+  const head = measure(ts, fs.readFileSync(path.join(root, f.path), 'utf8'), f.path, f.added);
+  checked += head.touched;
+  const baseSrc = f.untracked ? null : readAt(base, f.oldPath || f.path, root);
+  const baseFns = baseSrc ? measure(ts, baseSrc, f.path, null).out : new Map();
+  for (const [fn, info] of head.out) {
+    if (!worst || info.cyclomatic + info.cognitive > worst.cyclomatic + worst.cognitive) worst = { fn, file: f.path, line: info.line, cyclomatic: info.cyclomatic, cognitive: info.cognitive };
+    const cycOver = info.cyclomatic > THRESHOLDS.cyclomatic;
+    const cogOver = info.cognitive > THRESHOLDS.cognitive;
+    if (!cycOver && !cogOver) continue;
+    const before = baseFns.get(fn);
+    const entry = { fn, file: f.path, line: info.line, cyclomatic: info.cyclomatic, cognitive: info.cognitive, base: before ? { cyclomatic: before.cyclomatic, cognitive: before.cognitive } : null };
+    const grew = !before || (cycOver && info.cyclomatic > before.cyclomatic) || (cogOver && info.cognitive > before.cognitive);
+    (grew ? over : preexisting).push(entry);
+  }
+}
+
+for (const o of over) console.log(`OVER  ${o.file}:${o.line}  ${o.fn}  cyclomatic=${o.cyclomatic}/${THRESHOLDS.cyclomatic} cognitive=${o.cognitive}/${THRESHOLDS.cognitive}${o.base ? ` (was ${o.base.cyclomatic}/${o.base.cognitive})` : ' (new)'}`);
+for (const p of preexisting) console.log(`PREEXISTING  ${p.file}:${p.line}  ${p.fn}  cyclomatic=${p.cyclomatic} cognitive=${p.cognitive} (not grown — report only)`);
+if (checked === 0) emit(NAME, { pass: null, code: tsMissing ? 'NO_TYPESCRIPT' : 'NO_FUNCTIONS', base, thresholds: THRESHOLDS, checked: 0, over: [], preexisting: [] });
+emit(NAME, { pass: over.length === 0, ...(over.length ? { code: 'OVER' } : {}), base, checked, thresholds: THRESHOLDS, worst, over, preexisting });
