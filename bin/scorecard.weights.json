@@ -1,0 +1,17 @@
+{
+  "provenance": "prior — unmeasured; fit against outcomes when outcome tracking exists",
+  "hard": ["G0", "G1", "G3", "TAMPER", "G4", "G7", "QA"],
+  "weights": {
+    "Diagnosis": 20,
+    "Behaviors": 20,
+    "Regression": 15,
+    "Mutation": 15,
+    "RealWorld": 10,
+    "FanOut": 10,
+    "QA": 10,
+    "Complexity": 5,
+    "Cleanliness": 5
+  },
+  "tier": { "A": 1.0, "B": 0.5 },
+  "verdict": { "HIGH": 90, "MEDIUM": 75 }
+}
