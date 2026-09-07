@@ -1,0 +1,21 @@
+{
+  "name": "burden",
+  "version": "0.0.0",
+  "description": "Ticket in, proven PR out. A Claude Code plugin whose gates name the defect they catch and whose confidence score is computed, not typed.",
+  "private": true,
+  "license": "MIT",
+  "author": "Maksym Lyskov",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maxymlyskov/burden"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "lint:commits": "node scripts/check-commit-msg.mjs --range",
+    "lint:skills": "bash scripts/check-skills.sh",
+    "prepare": "git config core.hooksPath .githooks"
+  }
+}
