@@ -11,7 +11,7 @@
     {
       "name": "burden",
       "source": "./",
-      "description": "Ticket in, proven PR out — verdict before branch, probe before fix, gates before PR, computed confidence."
+      "description": "Ticket to pull request with the proof at every step: verdict, probe, gate battery, computed score."
     }
   ]
 }
