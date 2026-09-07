@@ -17,5 +17,8 @@
     "lint:commits": "node scripts/check-commit-msg.mjs --range",
     "lint:skills": "bash scripts/check-skills.sh",
     "prepare": "git config core.hooksPath .githooks"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }
