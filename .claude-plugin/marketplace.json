@@ -1,0 +1,17 @@
+{
+  "name": "burden",
+  "owner": {
+    "name": "Maksym Lyskov",
+    "url": "https://github.com/maxymlyskov"
+  },
+  "metadata": {
+    "description": "Marketplace for the burden plugin. Add with: /plugin marketplace add maxymlyskov/burden"
+  },
+  "plugins": [
+    {
+      "name": "burden",
+      "source": "./",
+      "description": "Ticket in, proven PR out — verdict before branch, probe before fix, gates before PR, computed confidence."
+    }
+  ]
+}

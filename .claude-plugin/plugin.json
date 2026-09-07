@@ -1,0 +1,13 @@
+{
+  "name": "burden",
+  "description": "Ticket in, proven PR out. Refuses to branch on an unproven diagnosis and refuses to open a PR below a confidence score it computed, not one the model typed.",
+  "version": "0.0.0",
+  "author": {
+    "name": "Maksym Lyskov",
+    "url": "https://github.com/maxymlyskov"
+  },
+  "homepage": "https://github.com/maxymlyskov/burden",
+  "repository": "https://github.com/maxymlyskov/burden",
+  "license": "MIT",
+  "keywords": ["claude-code", "agent-harness", "gates", "tdd", "mutation-testing", "code-review"]
+}
