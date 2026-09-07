@@ -16,8 +16,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
-      - name: tests (node:test, zero deps)
+      - name: install dev dependencies (typescript for the gate tests; runtime has none)
+        run: npm ci
+
+      - name: tests (node:test)
         run: npm test
 
       - name: skill lint (STYLE.md)
