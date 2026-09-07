@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: tests (node:test, zero deps)
+        run: npm test
+
+      - name: skill lint (STYLE.md)
+        run: npm run lint:skills
+
+      - name: shellcheck bin/ and hooks
+        run: |
+          sudo apt-get install -y -q shellcheck >/dev/null
+          files=$(git ls-files 'bin/*' '.githooks/*' 'scripts/*.sh')
+          [ -z "$files" ] || shellcheck -S warning $files
+
+      - name: commit messages (angular convention)
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-commit-msg.mjs --range "origin/${{ github.base_ref }}..HEAD"
+
+      - name: plugin manifest validation
+        run: npx --yes @anthropic-ai/claude-code plugin validate .
