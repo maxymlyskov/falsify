@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How a burden run goes</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --color-paper: #f5f5f5; --color-ink: #2d3142; --color-muted: #4f5d75; --color-accent: #eb6c36;
+      --font-sans: 'Geist', system-ui, sans-serif; --font-serif: 'Instrument Serif', serif; --font-mono: 'Geist Mono', ui-monospace, monospace; }
+    body { font-family: var(--font-sans); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 900px; display: block; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Flowchart · burden</p>
+    <h1>How a run goes</h1>
+
+    <svg viewBox="0 0 1000 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="how-it-works-title how-it-works-desc">
+      <title id="how-it-works-title">How a burden run goes</title>
+      <desc id="how-it-works-desc">A ticket is investigated to a verdict; a confirmed defect is reproduced by one failing test before any branch exists; a worklist drives coders on isolated test databases; a battery of gates and a fresh QA agent loop until every gate passes; a computed score decides whether a pull request opens.</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+        <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+      </defs>
+
+      <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+      <!-- ── Arrows ── -->
+      <!-- Ticket → Verdict -->
+      <line x1="500" y1="88" x2="500" y2="128" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Verdict → Not a defect (left) -->
+      <path d="M 400,176 H 268 Q 260,176 260,184 V 256" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Verdict → Probe (down) -->
+      <line x1="500" y1="224" x2="500" y2="256" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Verdict → Worklist (feature path, right margin) -->
+      <path d="M 600,176 H 792 Q 800,176 800,184 V 352 Q 800,360 792,360 H 640" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Probe → Worklist -->
+      <line x1="500" y1="312" x2="500" y2="336" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Worklist → Battery -->
+      <line x1="500" y1="392" x2="500" y2="424" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Battery self-loop (repair) -->
+      <path d="M 660,468 H 732 Q 740,468 740,460 V 408 Q 740,400 732,400 H 588 Q 580,400 580,408 V 424" fill="none" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+      <!-- Battery → QA -->
+      <line x1="500" y1="496" x2="500" y2="528" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- QA → Score -->
+      <line x1="500" y1="576" x2="500" y2="600" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <!-- Score → PR (right) -->
+      <line x1="600" y1="648" x2="720" y2="648" stroke="#eb6c36" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+      <!-- Score → back to Battery (left margin, dashed) -->
+      <path d="M 400,648 H 128 Q 120,648 120,640 V 468 Q 120,460 128,460 H 340" fill="none" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+
+      <!-- ── Arrow labels ── -->
+      <rect x="296" y="156" width="72" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="332" y="165" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.10em">NOT A DEFECT</text>
+
+      <rect x="508" y="232" width="72" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="544" y="241" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.10em">CONFIRMED</text>
+
+      <rect x="656" y="156" width="52" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="682" y="165" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.10em">FEATURE</text>
+
+      <rect x="652" y="380" width="60" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="682" y="389" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.10em">REPAIR</text>
+
+      <rect x="636" y="628" width="48" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="660" y="637" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.10em">HIGH</text>
+
+      <rect x="188" y="628" width="88" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="232" y="637" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.10em">BELOW HIGH</text>
+
+      <!-- ── Nodes ── -->
+      <!-- Ticket (start) -->
+      <rect x="380" y="40" width="240" height="48" rx="24" fill="#f5f5f5"/>
+      <rect x="380" y="40" width="240" height="48" rx="24" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+      <text x="500" y="62" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Ticket</text>
+      <text x="500" y="76" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">bug or feature · one question if unclear</text>
+
+      <!-- Verdict (decision) -->
+      <polygon points="500,128 600,176 500,224 400,176" fill="#f5f5f5"/>
+      <polygon points="500,128 600,176 500,224 400,176" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="500" y="172" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Evidence says</text>
+      <text x="500" y="186" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">a defect exists?</text>
+
+      <!-- Not a defect (end) -->
+      <rect x="180" y="256" width="160" height="48" rx="24" fill="#f5f5f5"/>
+      <rect x="180" y="256" width="160" height="48" rx="24" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+      <text x="260" y="278" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Explain. No branch.</text>
+      <text x="260" y="292" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">config · as designed · not built</text>
+
+      <!-- Probe (focal) -->
+      <rect x="380" y="256" width="240" height="56" rx="6" fill="#f5f5f5"/>
+      <rect x="380" y="256" width="240" height="56" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+      <text x="500" y="280" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Probe</text>
+      <text x="500" y="296" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">one test fails with the reported value</text>
+
+      <!-- Worklist + build -->
+      <rect x="360" y="336" width="280" height="56" rx="6" fill="#f5f5f5"/>
+      <rect x="360" y="336" width="280" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="500" y="360" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Worklist and build</text>
+      <text x="500" y="376" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">one proof per change · isolated test databases</text>
+
+      <!-- Battery (focal) -->
+      <rect x="340" y="424" width="320" height="72" rx="6" fill="#f5f5f5"/>
+      <rect x="340" y="424" width="320" height="72" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+      <text x="500" y="448" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Gate battery</text>
+      <text x="500" y="464" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">size · types · fan-out · behaviors · tamper</text>
+      <text x="500" y="478" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">regression · complexity · mutation · real-world</text>
+
+      <!-- QA -->
+      <rect x="380" y="528" width="240" height="48" rx="6" fill="#f5f5f5"/>
+      <rect x="380" y="528" width="240" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="500" y="550" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">QA by a fresh agent</text>
+      <text x="500" y="564" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">given the reasoning, told to break it</text>
+
+      <!-- Score (decision) -->
+      <polygon points="500,600 600,648 500,696 400,648" fill="#f5f5f5"/>
+      <polygon points="500,600 600,648 500,696 400,648" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="500" y="644" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Score, computed</text>
+      <text x="500" y="658" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">from gate output</text>
+
+      <!-- PR (end) -->
+      <rect x="720" y="624" width="200" height="48" rx="24" fill="#f5f5f5"/>
+      <rect x="720" y="624" width="200" height="48" rx="24" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+      <text x="820" y="646" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Pull request</text>
+      <text x="820" y="660" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">medium: draft PR, then CI decides</text>
+    </svg>
+  </div>
+</body>
+</html>
