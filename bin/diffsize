@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+'use strict';
+// Gate G0 — review size. Changed non-test, non-migration, non-generated lines vs the merge-base.
+//   > halt (400)  → pass:false SPLIT_REQUIRED   (opt out: --allow "<reason>", recorded, never silent)
+//   > warn (200)  → pass:true  warn:LARGE
+// Usage: diffsize <base-ref> [--halt 400] [--warn 200] [--allow "<reason>"] [--exclude <regex>]...
+// Provenance: Rigby & Bird, ESEC/FSE 2013 (converged median change 25–78 lines, peer-reviewed);
+// SmartBear/Cisco 2006 (LOC under 200, never over 400; practitioner case study).
+
+const { emit, usage, parseArgs } = require('../lib/result');
+const { changedFiles } = require('../lib/git');
+
+const NAME = 'DIFFSIZE';
+const { positional, flags } = parseArgs(process.argv.slice(2), { multi: ['exclude'] });
+const ref = positional[0];
+if (!ref) usage(NAME, 'usage: diffsize <base-ref> [--halt 400] [--warn 200] [--allow "<reason>"] [--exclude <regex>]...');
+
+const halt = parseInt(flags.halt || '400', 10);
+const warn = parseInt(flags.warn || '200', 10);
+const EXCLUDE = [
+  /\.(spec|test)\.[cm]?[jt]sx?$/, /(^|\/)(__tests__|test|tests|e2e|migrations|fixtures)\//,
+  /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/, /\.snap$/, /\.min\.[cm]?js$/, /\.(md|json|ya?ml|lock|svg|png)$/,
+  /(^|\/)(dist|build|coverage|node_modules)\//, /\.generated\./, /\.d\.ts$/,
+  ...(flags.exclude || []).map((s) => new RegExp(s)),
+];
+
+const { base, files } = changedFiles(ref);
+const counted = files
+  .filter((f) => !EXCLUDE.some((re) => re.test(f.path)))
+  .map((f) => ({ path: f.path, added: f.added.length, deleted: f.deleted }));
+const added = counted.reduce((s, f) => s + f.added, 0);
+const deleted = counted.reduce((s, f) => s + f.deleted, 0);
+const total = added + deleted;
+
+const result = {
+  pass: true, base, files: counted, added, deleted, total,
+  thresholds: { halt, warn, provenance: 'Rigby & Bird 2013 (peer-reviewed); SmartBear/Cisco 2006 (practitioner)' },
+};
+if (total > halt) {
+  if (flags.allow) { result.allowed = flags.allow; result.warn = 'LARGE'; }
+  else { result.pass = false; result.code = 'SPLIT_REQUIRED'; }
+} else if (total > warn) {
+  result.warn = 'LARGE';
+}
+emit(NAME, result);
