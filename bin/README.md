@@ -1,7 +1,7 @@
 # Gate scripts
 
 CommonJS, Node ≥ 18, no runtime dependencies (`typescript` is resolved from the repository under
-test, falling back to the plugin's own copy). Every script prints exactly one `<NAME>_RESULT {json}`
+test, falling back to the plugin's own copy). From a skill, call a script as `node "${CLAUDE_PLUGIN_ROOT}/bin/<name>" …` (and `gh-cli` as `bash "${CLAUDE_PLUGIN_ROOT}/bin/gh-cli" …`) so it works from any shell tool; `bin/` is also on the Bash tool PATH while the plugin is enabled. Every script prints exactly one `<NAME>_RESULT {json}`
 line last and exits **0** on `pass: true | null`, **1** on `pass: false`, **2** on `ok: false`.
 `pass: null` means "could not measure" and carries a `code`; the scorecard renders it `[—]`, never PASS.
 

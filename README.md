@@ -11,10 +11,11 @@ reads high.
 
 ```
 /plugin marketplace add maxymlyskov/burden
-/plugin install burden
+/plugin install burden@burden
 ```
 
-Then, once per repository:
+The repository is private until v0.1.0, so these two lines work for its owner today and for everyone
+after the tag. Then, once per repository:
 
 ```
 /burden:setup

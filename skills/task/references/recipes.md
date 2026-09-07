@@ -1,7 +1,7 @@
 # Recipes
 
 Everything here reads `.claude/burden.config.json` (written by `/burden:setup`). Section names are
-referenced from `SKILL.md` as `§name`.
+referenced from `SKILL.md` as `§name`. Gate scripts are run as `node "${CLAUDE_PLUGIN_ROOT}/bin/<gate>" …`.
 
 ## §config — the keys the recipes use
 ```
