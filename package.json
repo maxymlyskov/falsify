@@ -1,7 +1,7 @@
 {
   "name": "burden",
   "version": "0.0.0",
-  "description": "Ticket in, proven PR out. A Claude Code plugin whose gates name the defect they catch and whose confidence score is computed, not typed.",
+  "description": "A Claude Code plugin that takes a ticket to a pull request and refuses to skip the proof at any step.",
   "private": true,
   "license": "MIT",
   "author": "Maksym Lyskov",

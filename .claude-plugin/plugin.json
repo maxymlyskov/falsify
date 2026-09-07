@@ -1,6 +1,6 @@
 {
   "name": "burden",
-  "description": "Ticket in, proven PR out. Refuses to branch on an unproven diagnosis and refuses to open a PR below a confidence score it computed, not one the model typed.",
+  "description": "Takes a ticket to a pull request and refuses to skip the proof at any step: evidence before a branch, a failing probe before a fix, gates and a computed score before the PR.",
   "version": "0.0.0",
   "author": {
     "name": "Maksym Lyskov",
