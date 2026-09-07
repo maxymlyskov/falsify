@@ -1,0 +1,8 @@
+node_modules/
+.cache/
+*.log
+.DS_Store
+Thumbs.db
+# run records and gate journals are per-machine state, never committed
+.claude/.cache/
+test/.tmp/
