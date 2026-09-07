@@ -1,0 +1,95 @@
+#!/usr/bin/env node
+'use strict';
+// Gate G2 — fan-out: files this diff should probably have touched but did not.
+// Source 1, co-change mining (Zimmermann, Weißgerber, Diehl & Zeller, ICSE 2004 / TSE 2005): for each
+// changed file F, over its last --window non-merge commits, every other file G with
+// conf = commits(F∧G)/commits(F) ≥ --conf and support = commits(F∧G) ≥ --support, not in the diff and
+// still existing, is MISSED. Source 2, static rules from the repo's config (`fanout.rules`): each rule is
+// {"when": "<regex on changed path>", "expect": ["<template>"], "why": "..."} where a template may use
+// $1..$n from the regex, $lc1 (lower-camel of $1) and $kebab1. Thresholds are priors — unmeasured.
+// Usage: fanout <base-ref> [--dismiss <file>=<reason>]... [--window 30] [--conf 0.5] [--support 3]
+//        [--rules <path.json>]
+// A finding is closed by editing the file or by --dismiss with a reason; both are recorded in the PR.
+
+const fs = require('node:fs');
+const path = require('node:path');
+const { emit, usage, parseArgs } = require('../lib/result');
+const { changedFiles, sh } = require('../lib/git');
+
+const NAME = 'FANOUT';
+const { positional, flags } = parseArgs(process.argv.slice(2), { multi: ['dismiss'] });
+const ref = positional[0];
+const thresholds = { conf: Number(flags.conf || 0.5), support: parseInt(flags.support || '3', 10), window: parseInt(flags.window || '30', 10), provenance: 'prior — unmeasured' };
+if (!ref || [thresholds.conf, thresholds.support, thresholds.window].some(Number.isNaN)) usage(NAME, 'usage: fanout <base-ref> [--dismiss <file>=<reason>]... [--window 30] [--conf 0.5] [--support 3] [--rules <path.json>]');
+
+const { root, base, files } = changedFiles(ref);
+const changedSet = new Set(files.map((f) => f.path));
+const isSpec = (f) => /\.(spec|test)\.[cm]?[jt]sx?$/.test(f);
+const sources = files.filter((f) => !isSpec(f.path) && !/(^|\/)(migrations|test|tests|__tests__)\//.test(f.path) && !/(package-lock\.json|\.lock)$/.test(f.path) && fs.existsSync(path.join(root, f.path)));
+if (sources.length === 0) emit(NAME, { pass: null, code: 'NO_TARGETS', base, thresholds, missed: [], static: [], dismissed: [] });
+
+// ---- Source 1: co-change mining -----------------------------------------------------------------
+const missed = [];
+for (const F of sources) {
+  if (F.untracked) continue; // no history yet
+  const shas = sh(`git log --format=%H --no-merges -n ${thresholds.window} ${base} -- ${JSON.stringify(F.path)}`, root).split('\n').map((s) => s.trim()).filter(Boolean);
+  if (shas.length === 0) continue;
+  const counts = new Map();
+  const listing = sh(`git show --format=%H --name-only ${shas.join(' ')}`, root);
+  let inCommit = false;
+  for (const line of listing.split('\n')) {
+    const t = line.trim();
+    if (/^[0-9a-f]{40}$/.test(t)) { inCommit = true; continue; }
+    if (!t || !inCommit || t === F.path) continue;
+    counts.set(t, (counts.get(t) || 0) + 1);
+  }
+  for (const [G, support] of counts) {
+    const conf = support / shas.length;
+    if (conf >= thresholds.conf && support >= thresholds.support && !changedSet.has(G) && fs.existsSync(path.join(root, G))) {
+      missed.push({ file: G, because: F.path, conf: Math.round(conf * 100) / 100, support, of: shas.length });
+    }
+  }
+}
+
+// ---- Source 2: static rules from config ---------------------------------------------------------
+function loadRules() {
+  const candidates = [flags.rules, path.join(root, '.claude', 'burden.config.json')].filter(Boolean);
+  for (const p of candidates) {
+    if (!fs.existsSync(p)) continue;
+    try {
+      const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+      const rules = p.endsWith('burden.config.json') ? (j.gates && j.gates.fanout && j.gates.fanout.rules) : (j.rules || j);
+      if (Array.isArray(rules)) return rules;
+    } catch (e) { /* malformed → no static rules */ }
+  }
+  return [];
+}
+const lc = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+const kebab = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+const statics = [];
+for (const rule of loadRules()) {
+  let re; try { re = new RegExp(rule.when); } catch (e) { continue; }
+  for (const F of sources) {
+    const m = F.path.match(re);
+    if (!m) continue;
+    for (const tpl of rule.expect || []) {
+      const expected = tpl.replace(/\$(lc|kebab)?(\d+)/g, (_, fn, n) => { const v = m[+n] || ''; return fn === 'lc' ? lc(v) : fn === 'kebab' ? kebab(v) : v; });
+      if (fs.existsSync(path.join(root, expected)) && !changedSet.has(expected) && !statics.some((s) => s.file === expected && s.because === F.path)) {
+        statics.push({ file: expected, rule: rule.why || rule.when, because: F.path });
+      }
+    }
+  }
+}
+
+// ---- Dismissals ---------------------------------------------------------------------------------
+const dismiss = new Map((flags.dismiss || []).map((s) => { const m = s.match(/^(.+?)=(.+)$/); return m ? [m[1], m[2]] : null; }).filter(Boolean));
+const dismissed = [];
+const keep = (list) => list.filter((x) => { const r = dismiss.get(x.file); if (r) { dismissed.push({ file: x.file, reason: r }); return false; } return true; });
+const missedKept = keep(missed);
+const staticKept = keep(statics);
+
+for (const m of missedKept) console.log(`MISSED?  ${m.file}  — co-changed with ${m.because} in ${m.support}/${m.of} of its last commits (conf ${m.conf})`);
+for (const s of staticKept) console.log(`STATIC   ${s.file}  — ${s.rule} (because ${s.because})`);
+for (const d of dismissed) console.log(`DISMISSED  ${d.file}  — ${d.reason}`);
+const pass = missedKept.length === 0 && staticKept.length === 0;
+emit(NAME, { pass, ...(pass ? {} : { code: 'MISSED' }), base, thresholds, changed: sources.map((f) => f.path), missed: missedKept, static: staticKept, dismissed });
