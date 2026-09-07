@@ -2,7 +2,21 @@
 // Fixture repo for gate tests: a temp git repo with a base commit, helpers to change files, and a runner
 // that executes a gate from bin/ and parses its RESULT line. Every gate test starts here.
 
-const { execSync } = require('node:child_process');
+const { execSync, spawnSync } = require('node:child_process');
+
+// Minimal shell-style splitter: whitespace separates, double quotes group, \" is a literal quote.
+function splitArgs(s) {
+  const out = []; let cur = ''; let inQ = false; let has = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '\\' && s[i + 1] === '"') { cur += '"'; i++; has = true; continue; }
+    if (ch === '"') { inQ = !inQ; has = true; continue; }
+    if (!inQ && /\s/.test(ch)) { if (has) { out.push(cur); cur = ''; has = false; } continue; }
+    cur += ch; has = true;
+  }
+  if (has) out.push(cur);
+  return out;
+}
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -28,18 +42,16 @@ function makeRepo(files = {}) {
   const commit = (msg = 'change') => { run('git add -A'); run(`git commit -q --allow-empty -m "${msg}"`); };
   const branch = (name = 'work') => run(`git checkout -q -b ${name}`);
   const checkout = (name) => run(`git checkout -q ${name}`);
-  // Runs bin/<name> <args> inside the fixture; returns {code, out, result}. Never throws on exit≠0.
+  // Runs bin/<name> with argv inside the fixture; returns {code, out, result}. Never throws on exit≠0.
+  // `args` is a string split shell-style (double quotes group, \" escapes) or an array — no shell is
+  // involved, so nested quotes reach the gate intact on every platform.
   const gate = (name, args = '') => {
-    let out = ''; let code = 0;
-    try {
-      out = execSync(`node "${path.join(BIN, name)}" ${args}`, { cwd: dir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-    } catch (e) {
-      out = `${e.stdout || ''}${e.stderr || ''}`;
-      code = e.status;
-    }
+    const argv = Array.isArray(args) ? args : splitArgs(args);
+    const r = spawnSync(process.execPath, [path.join(BIN, name), ...argv], { cwd: dir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const out = `${r.stdout || ''}${r.stderr || ''}`;
     const line = out.trim().split('\n').reverse().find((l) => /_RESULT \{/.test(l));
     const result = line ? JSON.parse(line.slice(line.indexOf('{'))) : null;
-    return { code, out, result };
+    return { code: r.status, out, result };
   };
   const cleanup = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* windows file locks */ } };
   return { dir, run, write, read, commit, branch, checkout, gate, cleanup };
