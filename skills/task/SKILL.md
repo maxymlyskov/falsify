@@ -2,14 +2,14 @@
 name: task
 description: Turn a ticket into a proven PR — verdict before branch, probe before fix, gate battery and adversarial QA before a computed score opens the PR.
 argument-hint: <ticket id | URL | description> [plan-only] [no pr] [budget <min>] [large-change "<why>"] [no tdd|evidence|probe|unravel] [resume]
-allowed-tools: Bash(git:*), Bash(diffsize:*), Bash(typegate:*), Bash(fanout:*), Bash(select-specs:*), Bash(complexity:*), Bash(mutants:*), Bash(tamper:*), Bash(scorecard:*), Bash(gh-cli:*), Bash(node:*), Bash(npx:*), Bash(npm test:*), Read, Edit, Write
+allowed-tools: Bash(git:*), Bash(node:*), Bash(bash:*), Bash(npx:*), Bash(npm test:*), Read, Edit, Write
 disable-model-invocation: true
 ---
 
 ## Context
 - Config: `.claude/burden.config.json` (keys in `references/recipes.md §config`). Absent → halt `NOT_CONFIGURED: run /burden:setup first`. Every command below reads its slots from it; `<base>` = `git.base`.
 - References (read only the file a step names): `references/gates.md` (every gate: command, pass, N/A, tier), `references/recipes.md` (§evidence §testdb §testcmd §migration §screenshot §delegation), `references/scorecard.md`, `references/incidents.md`. Prompts: `prompts/{architect,tdd-implementer,implementer,qa}.md`.
-- GitHub only via `gh-cli` (`pr-create | pr-ready | pr-checks | pr-view | issue-view`). Tracker via `tracker.fetch` / `tracker.comment`.
+- Gate scripts run as `node "${CLAUDE_PLUGIN_ROOT}/bin/<gate>" …` (`gates.md` writes them short as `<gate> …`). GitHub only via `bash "${CLAUDE_PLUGIN_ROOT}/bin/gh-cli"` (`pr-create | pr-ready | pr-checks | pr-view | issue-view`). Tracker via `tracker.fetch` / `tracker.comment`.
 - Run record: `.claude/.cache/burden-run-<TICKET>.json` (shape in `scorecard.md`) — created in step 1, every step writes `steps.<n>.started/ended`, every gate result appended with its tier, read by `scorecard`, deleted in step 11 on success, kept on halt.
 - Steering lives in the gate scripts, not prose (ADR-0002); the verdict is computed, never typed (ADR-0003). Independent gates and subagents are dispatched in one message.
 
@@ -83,8 +83,8 @@ Each step writes `started`/`ended` to the run record. Subagent prompts carry onl
                stepsA, edge, house, fired, blocking}. blocking → step 7 (scoped re-QA, edge cap halved);
                out-of-scope / accepted → Review Notes; three rounds → ask. FIRED checks → `caught` +1 in the
                calibration file.
-9  Score       `scorecard .claude/.cache/burden-run-<TICKET>.json` → paste its block verbatim. HIGH → ready PR.
-               MEDIUM → draft PR, `gh-cli pr-checks <n> --watch`, green → `gh-cli pr-ready <n>`. NOT SHIPPABLE or
+9  Score       `node "${CLAUDE_PLUGIN_ROOT}/bin/scorecard" .claude/.cache/burden-run-<TICKET>.json` → paste its block verbatim. HIGH → ready PR.
+               MEDIUM → draft PR, `gh-cli pr-checks <n> --watch`, green → `gh-cli pr-ready <n>` (both via the bash form above). NOT SHIPPABLE or
                LOW → step 7 with the listed gates.
 10 Commit/PR   a. stage; comment audit `git diff --cached -U0 | grep -E "^\+.*(//|/\*)"` — each hit a hidden
                invariant or deleted; commit per git.commitTemplate (body = why). `no pr` stops here. b. PR body to

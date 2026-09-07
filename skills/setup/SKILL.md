@@ -31,8 +31,8 @@ Ask one question at a time, detected default first, recommendation and a one-lin
 4 Git           Detect default branch and remote. Ask base branch, branch template ({id} {slug}), commit template
                 ({type} {what} {id}). Run `git fetch <remote> <base>` and `git merge-base <remote>/<base> HEAD`.
                 Writes git.{remote, base, branchTemplate, commitTemplate}.
-5 Type check    Detect tsconfig roots. Propose typecheck.roots and typecheck.command. Run `typegate <base>
-                --roots … --tsc …` → RESULT must be ok:true. Writes typecheck.{roots, command}.
+5 Type check    Detect tsconfig roots. Propose typecheck.roots and typecheck.command. Run `node "${CLAUDE_PLUGIN_ROOT}/bin/typegate"
+                <base> --roots … --tsc …` → RESULT must be ok:true. Writes typecheck.{roots, command}.
 6 UI            Detect playwright / a dev-server script. Ask: screenshot command with {route} {expect} {out}, or
                 none. Run it against one route → a PNG exists at {out}; Read it. Writes ui.screenshot.
 7 Evidence      Detect `bin/*` or `.claude/skills/*-cli/*.sh`. Ask which are read-only lookups safe for a bug
