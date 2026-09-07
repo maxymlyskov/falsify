@@ -9,7 +9,7 @@ const { spawnSync } = require('node:child_process');
 // The wrapper is exercised with a fake `gh` on PATH that echoes its argv, so no network and no auth.
 const BIN = path.join(__dirname, '..', 'bin', 'gh-cli');
 function run(args, { withFakeGh = true } = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'burden-gh-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'falsify-gh-'));
   if (withFakeGh) { fs.writeFileSync(path.join(dir, 'gh'), '#!/usr/bin/env bash\necho "gh $*"\n'); fs.chmodSync(path.join(dir, 'gh'), 0o755); }
   const r = spawnSync('bash', [BIN, ...args], { encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH}` } });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
@@ -24,7 +24,7 @@ test('no verb, unknown verb, and forbidden verbs are USAGE with exit 2', () => {
 });
 
 test('pr-create requires base, title and an existing body file; passes --draft through', () => {
-  const body = path.join(os.tmpdir(), `burden-body-${process.pid}.md`);
+  const body = path.join(os.tmpdir(), `falsify-body-${process.pid}.md`);
   fs.writeFileSync(body, '# body\n');
   let r = run(['pr-create', '--base', 'main', '--title', 'fix: x']);
   assert.equal(r.code, 2);

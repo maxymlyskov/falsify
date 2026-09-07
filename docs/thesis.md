@@ -1,4 +1,4 @@
-# Why burden exists
+# Why falsify exists
 
 **Make the agent prove the bug before it writes the fix.**
 
@@ -161,7 +161,7 @@ work is ready to run.
 
 ## What this is not
 
-- **Not only a plugin.** The contract is portable and implementation-agnostic; `burden` is one
+- **Not only a plugin.** The contract is portable and implementation-agnostic; `falsify` is one
   implementation of it, for Claude Code.
 - **Not a claim that agents are unreliable.** The opposite — they're reliable enough that the
   remaining failures are subtle, which is precisely why they need structural checks rather than

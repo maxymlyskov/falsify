@@ -9,7 +9,7 @@ Every `SKILL.md` starts with YAML frontmatter:
 
 ```yaml
 ---
-name: <kebab-case; becomes /burden:<name>>
+name: <kebab-case; becomes /falsify:<name>>
 description: <one sentence, third person, says what AND when; <=160 chars; this is the trigger>
 argument-hint: <args spec; appears in autocomplete>
 allowed-tools: <scoped tool filters; the narrowest set that works>
@@ -50,7 +50,7 @@ a step names the file. A `SKILL.md` is the flow, not the manual.
 ## Argument substitution
 
 - `$ARGUMENTS` — full argument string as typed; `$1`, `$2` positional.
-- Multi-word args must be quoted at invocation: `/burden:task "two words" three`.
+- Multi-word args must be quoted at invocation: `/falsify:task "two words" three`.
 
 ## Prompts for subagents (`skills/*/prompts/*.md`)
 

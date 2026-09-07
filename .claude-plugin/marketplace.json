@@ -1,15 +1,15 @@
 {
-  "name": "burden",
+  "name": "falsify",
   "owner": {
     "name": "Maksym Lyskov",
     "url": "https://github.com/maxymlyskov"
   },
   "metadata": {
-    "description": "Marketplace for the burden plugin. Add with: /plugin marketplace add maxymlyskov/burden"
+    "description": "Marketplace for the falsify plugin. Add with: /plugin marketplace add maxymlyskov/falsify"
   },
   "plugins": [
     {
-      "name": "burden",
+      "name": "falsify",
       "source": "./",
       "description": "Ticket to pull request with the proof at every step: verdict, probe, gate battery, computed score."
     }

@@ -24,7 +24,7 @@ function record(overrides = {}) {
   };
 }
 function run(rec) {
-  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'burden-sc-')), 'run.json');
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'falsify-sc-')), 'run.json');
   fs.writeFileSync(f, JSON.stringify(rec));
   const r = spawnSync(process.execPath, [path.join(BIN, 'scorecard'), f], { encoding: 'utf8' });
   const out = `${r.stdout}${r.stderr}`;

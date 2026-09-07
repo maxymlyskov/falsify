@@ -59,11 +59,11 @@ test('static rules from --rules flag an entity change whose DTO and mapper were 
   assert.equal(result.static[0].rule, 'entity → DTO, mapper');
 });
 
-test('static rules are read from .claude/burden.config.json when present', (t) => {
+test('static rules are read from .claude/falsify.config.json when present', (t) => {
   const r = makeRepo({
     'src/a.ts': 'export const a = 1;\n',
     'src/a.types.ts': 'export type A = number;\n',
-    '.claude/burden.config.json': JSON.stringify({ gates: { fanout: { rules: [{ when: '^src/(\\w+)\\.ts$', expect: ['src/$1.types.ts'], why: 'types mirror' }] } } }),
+    '.claude/falsify.config.json': JSON.stringify({ gates: { fanout: { rules: [{ when: '^src/(\\w+)\\.ts$', expect: ['src/$1.types.ts'], why: 'types mirror' }] } } }),
   });
   t.after(r.cleanup);
   r.branch('work');

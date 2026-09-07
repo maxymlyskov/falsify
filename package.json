@@ -1,5 +1,5 @@
 {
-  "name": "burden",
+  "name": "falsify",
   "version": "0.0.0",
   "description": "A Claude Code plugin that takes a ticket to a pull request and refuses to skip the proof at any step.",
   "private": true,
@@ -7,7 +7,7 @@
   "author": "Maksym Lyskov",
   "repository": {
     "type": "git",
-    "url": "https://github.com/maxymlyskov/burden"
+    "url": "https://github.com/maxymlyskov/falsify"
   },
   "engines": {
     "node": ">=18"

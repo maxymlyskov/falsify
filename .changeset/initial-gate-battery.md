@@ -1,5 +1,5 @@
 ---
-"burden": minor
+"falsify": minor
 ---
 
 Initial gate battery and orchestration: eight gate scripts (`diffsize`, `typegate`, `fanout`,

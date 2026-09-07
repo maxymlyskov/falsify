@@ -53,12 +53,12 @@ for (const F of sources) {
 
 // ---- Source 2: static rules from config ---------------------------------------------------------
 function loadRules() {
-  const candidates = [flags.rules, path.join(root, '.claude', 'burden.config.json')].filter(Boolean);
+  const candidates = [flags.rules, path.join(root, '.claude', 'falsify.config.json')].filter(Boolean);
   for (const p of candidates) {
     if (!fs.existsSync(p)) continue;
     try {
       const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-      const rules = p.endsWith('burden.config.json') ? (j.gates && j.gates.fanout && j.gates.fanout.rules) : (j.rules || j);
+      const rules = p.endsWith('falsify.config.json') ? (j.gates && j.gates.fanout && j.gates.fanout.rules) : (j.rules || j);
       if (Array.isArray(rules)) return rules;
     } catch (e) { /* malformed → no static rules */ }
   }

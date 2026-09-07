@@ -1,4 +1,4 @@
-# burden
+# falsify
 
 A Claude Code plugin that takes a ticket to a pull request and refuses to skip the proof at any step.
 No branch until evidence shows the defect exists. No fix until one test fails with the value the
@@ -10,24 +10,24 @@ reads high.
 ## Install
 
 ```
-/plugin marketplace add maxymlyskov/burden
-/plugin install burden@burden
+/plugin marketplace add maxymlyskov/falsify
+/plugin install falsify@falsify
 ```
 
 The repository is private until v0.1.0, so these two lines work for its owner today and for everyone
 after the tag. Then, once per repository:
 
 ```
-/burden:setup
+/falsify:setup
 ```
 
 Setup asks where tickets live (GitHub Issues, Linear, Jira, local files), what the test command is and
 how it reports a pass, which branch is the base, whether there is a UI it can screenshot, and where the
-handoff goes. It runs each answer before accepting it and writes `.claude/burden.config.json`.
+handoff goes. It runs each answer before accepting it and writes `.claude/falsify.config.json`.
 
 ## A run
 
-`/burden:task 212` fetches the ticket and checks out the base branch. For a bug it gathers read-only
+`/falsify:task 212` fetches the ticket and checks out the base branch. For a bug it gathers read-only
 evidence and reaches a verdict. The default hypothesis is that the system works as configured; a root
 cause written in the ticket is a hypothesis to disprove. A verdict of configuration, as designed, or not
 built ends the run with an explanation and no branch.

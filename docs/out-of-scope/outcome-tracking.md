@@ -9,6 +9,6 @@ recorded — change failure rate per Forsgren, Humble & Kim, *Accelerate* (2018)
 `scorecard.weights.json` can be fitted instead of guessed. `docs/open-questions.md` lists the specific
 questions and the confounders.
 
-Would reopen as: v0.2 — a `burden outcome <pr> <revert|hotfix|reopen|clean>` record, a per-quarter
+Would reopen as: v0.2 — a `falsify outcome <pr> <revert|hotfix|reopen|clean>` record, a per-quarter
 calibration table (verdict × outcome), and weights re-fitted with provenance changed from
 `prior — unmeasured` to `fitted: <n> runs, <date>`.

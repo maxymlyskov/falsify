@@ -5,7 +5,7 @@ measures one thing: how much of the claimed confidence was **executed this run**
 claim to measure correctness — that needs outcomes, which are out of scope; the run record keeps the data
 so the weights can be fitted later instead of guessed.
 
-Command: `scorecard .claude/.cache/burden-run-<TICKET>.json` → prints the `## Confidence` block and
+Command: `scorecard .claude/.cache/falsify-run-<TICKET>.json` → prints the `## Confidence` block and
 `## Cost`, then `SCORECARD_RESULT`. The block is pasted into the PR verbatim.
 
 ## Weights (`bin/scorecard.weights.json`)
@@ -60,7 +60,7 @@ rounds 2 · wall 9m41s
 SCORECARD_RESULT {"ok":true,"pass":true,"score":100,"verdict":"HIGH","hardFailed":[],"rows":{...}}
 ```
 
-## Run record (input) — `.claude/.cache/burden-run-<TICKET>.json`
+## Run record (input) — `.claude/.cache/falsify-run-<TICKET>.json`
 Created in step 1, appended by every step, deleted in step 11 on success, kept on halt for `resume`.
 ```json
 { "ticket": "212", "kind": "bug", "lane": "standard", "tdd": true, "scope": null,
