@@ -1,6 +1,6 @@
 {
   "name": "falsify",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A Claude Code plugin that takes a ticket to a pull request and refuses to skip the proof at any step.",
   "private": true,
   "license": "MIT",
