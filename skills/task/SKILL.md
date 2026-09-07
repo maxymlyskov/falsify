@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 ## Context
 - Config: `.claude/burden.config.json` (keys in `references/recipes.md §config`). Absent → halt `NOT_CONFIGURED: run /burden:setup first`. Every command below reads its slots from it; `<base>` = `git.base`.
-- References (read only the file a step names): `references/gates.md` (every gate: command, pass, N/A, tier), `references/recipes.md` (§evidence §testdb §testcmd §migration §screenshot §delegation), `references/scorecard.md`, `references/incidents.md`. Prompts: `prompts/{architect,tdd-implementer,implementer,qa}.md`.
+- References (read only the file a step names): `references/gates.md` (every gate: command, pass, N/A, tier), `references/recipes.md` (§evidence §testdb §testcmd §migration §screenshot §delegation), `references/scorecard.md`, `references/incidents.md`. Prompts: `prompts/{architect,tdd-implementer,implementer,qa}.md`. Questions to the user (steps 1, 2, 4) follow `../grilling/SKILL.md`.
 - Gate scripts run as `node "${CLAUDE_PLUGIN_ROOT}/bin/<gate>" …` (`gates.md` writes them short as `<gate> …`). GitHub only via `bash "${CLAUDE_PLUGIN_ROOT}/bin/gh-cli"` (`pr-create | pr-ready | pr-checks | pr-view | issue-view`). Tracker via `tracker.fetch` / `tracker.comment`.
 - Run record: `.claude/.cache/burden-run-<TICKET>.json` (shape in `scorecard.md`) — created in step 1, every step writes `steps.<n>.started/ended`, every gate result appended with its tier, read by `scorecard`, deleted in step 11 on success, kept on halt.
 - Steering lives in the gate scripts, not prose (ADR-0002); the verdict is computed, never typed (ADR-0003). Independent gates and subagents are dispatched in one message.
@@ -57,8 +57,11 @@ Each step writes `started`/`ended` to the run record. Subagent prompts carry onl
                asserting the reporter's expected value; it must fail with actual == the reported value, else halt
                ASSUMPTION_UNPROVEN: <expected X, got Y | probe passed>. Record probe {spec, it, expected, actual};
                keep it uncommitted as behavior 1's RED. UI symptom: the screenshot is the probe. Feature: none.
-4  Grill       ≤2 design questions, only where answers diverge into different code, recommendation + one-line
-               trade-off first; never ask what code, evidence or the ticket answers. Budget: 1 + 1 + 2 = 4.
+4  Grill       the grilling method (../grilling/SKILL.md): compute the frontier of design decisions the worklist
+               depends on, ask the whole frontier in one round, numbered, each with a recommended answer; look
+               facts up, never ask them; a question whose answer diverges into no different code is not asked.
+               standard lane: one round, ≤2 questions. complex: rounds until the frontier is empty. ui: none.
+               Steps 1 and 2 use the same format for their single question. Standard-lane budget: 1 + 1 + 2 = 4.
 5  Design gate worklist `n. [file] <change> → proof: it("<name>") RED→GREEN in <spec> | screenshot <route> shows
                <state> | §migration block`, then the QA procedure (3–8 human steps + edge cases). complex: ONE
                architect (opus, architect.md); missing Worklist/Acceptance → respawn once, then ARCHITECT_INCOMPLETE.
