@@ -23,10 +23,10 @@ jobs:
       - name: skill lint (STYLE.md)
         run: npm run lint:skills
 
-      - name: shellcheck bin/ and hooks
+      - name: shellcheck every bash script (bin/, hooks, scripts)
         run: |
           sudo apt-get install -y -q shellcheck >/dev/null
-          files=$(git ls-files 'bin/*' '.githooks/*' 'scripts/*.sh')
+          files=$(git ls-files 'bin/*' '.githooks/*' 'scripts/*' | xargs grep -l '^#!/usr/bin/env \(ba\)\?sh' || true)
           [ -z "$files" ] || shellcheck -S warning $files
 
       - name: commit messages (angular convention)
