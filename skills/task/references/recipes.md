@@ -52,7 +52,9 @@ mechanism does not understand it, and the prose is where that becomes visible.
 1. `test.setup` set → run it (e.g. `docker compose -f test/docker-compose.yml up -d`). Failure → halt
    `TEST_DB_DOWN: <stderr>`.
 2. `test.readyCheck` set → loop it up to 30 × 2 s before the first test run. Never start a suite against
-   a service that is still booting: connection-refused is indistinguishable from RED.
+   a service that is still booting: connection-refused is indistinguishable from RED. Still not ready
+   after 30 tries → `ENV_BLOCKED` (`gates.md` §Environment): name the command and its output and ask the
+   user before anything else runs. Never continue with the specs it gates skipped.
 3. `test.dbNameEnv` set → one database per coder and per QA agent, created before dispatch with
    `test.dbCreate` (`{db}` = `<base name>_<n>`; "already exists" is fine). `{db}` goes into every coder
    prompt via `{{TEST_CMD}}`; the orchestrator's own gate runs use the base name. Source: Luo et al.,
@@ -63,7 +65,8 @@ None of the three set → skip this section; record `testdb: none` in the run re
 `test.command` with slots: `{spec}` the spec path relative to the app root, `{grep}` one test name or an
 alternation of this task's names, `{db}` the database name (empty when `test.dbNameEnv` is null). Every
 build-time run passes `{grep}` (one behavior while iterating; the alternation when checking together).
-Whole-file runs happen once, at G4, on the specs `select-specs` picks. No `.only` survives to commit.
+Whole-file runs happen once, at G4, on the specs `select-specs` picks — nowhere else, and never inside QA
+(`gates.md` §QA). No `.only` survives to commit.
 Pass/fail is read from `test.failRegex` (mocha `N failing`, jest/vitest `N failed`, node:test `# fail N`);
 a non-zero exit without a matching line is not a failed test — it is a broken run. On Windows a command
 with a POSIX env prefix runs under bash (`mutants` does this itself).
@@ -96,8 +99,10 @@ the migration SQL under `## How to Test` for a human.
 screenshot per state the diff adds. When the configured command cannot reach a surface (auth, a route the
 component gates on), the fallback is a throwaway preview page mounting the component under a fake store —
 named `preview-<TICKET>-<surface>.*`, never committed, removed before the report; the recipe that
-applies is pasted into `{{PREVIEW_RECIPE}}` for QA. `ui.screenshot` null → G7 is `[B]` for frontend
-changes with reason `no screenshot command configured`; the PR body names the screens to check by hand.
+applies is pasted into `{{PREVIEW_RECIPE}}` for QA. `ui.screenshot` null, or exiting non-zero, on a frontend change →
+`ENV_BLOCKED` (`gates.md` §Environment): say which command is missing or failing and ask; only on the
+user's go-ahead is G7 `[B]` with reason `no screenshot command configured`, and then the PR body names
+the screens to check by hand.
 
 ## §delegation — the delegation floor
 Write it yourself when a subagent cannot pay for itself: a worklist item that is one file and under ~20

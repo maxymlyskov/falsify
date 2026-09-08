@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 ## Context
 - Config: `.claude/falsify.config.json` (keys in `references/recipes.md §config`). Absent → halt `NOT_CONFIGURED: run /falsify:setup first`. Every command below reads its slots from it; `<base>` = `git.base`.
-- References (read only the file a step names): `references/gates.md` (every gate: command, pass, N/A, tier), `references/recipes.md` (§evidence §testdb §testcmd §migration §screenshot §delegation), `references/scorecard.md`, `references/incidents.md`. Prompts: `prompts/{architect,tdd-implementer,implementer,qa}.md`. Questions to the user (steps 1, 2, 4) follow `../grilling/SKILL.md`.
+- References (read only the file a step names): `references/gates.md` (every gate: command, pass, N/A, tier; §Environment), `references/recipes.md` (§evidence §testdb §testcmd §migration §screenshot §delegation), `references/scorecard.md`, `references/incidents.md`. Prompts: `prompts/{architect,tdd-implementer,implementer,qa}.md`. Questions to the user (steps 1, 2, 4) follow `../grilling/SKILL.md`.
 - Gate scripts run as `node "${CLAUDE_PLUGIN_ROOT}/bin/<gate>" …` (`gates.md` writes them short as `<gate> …`). GitHub only via `bash "${CLAUDE_PLUGIN_ROOT}/bin/gh-cli"` (`pr-create | pr-ready | pr-checks | pr-view | issue-view`). Tracker via `tracker.fetch` / `tracker.comment`.
 - Run record: `.claude/.cache/falsify-run-<TICKET>.json` (shape in `scorecard.md`) — created in step 1, every step writes `steps.<n>.started/ended`, every gate result appended with its tier, read by `scorecard`, deleted in step 11 on success, kept on halt.
 - Steering lives in the gate scripts, not prose (ADR-0002); the verdict is computed, never typed (ADR-0003). Independent gates and subagents are dispatched in one message.
@@ -30,7 +30,7 @@ disable-model-invocation: true
 | `{{WORKLIST}}`, `{{ACCEPTANCE}}` | the worklist and its QA procedure | 5 |
 | `{{BEHAVIORS}}`, `{{SPEC_PATH}}`, `{{SUT_PATHS}}` | worklist slice per spec file (TDD coder) | 6 |
 | `{{TASK_NAME}}`, `{{FILE_PATHS}}` | worklist slice per disjoint file set (implementer) | 6 |
-| `{{TEST_CMD}}` | `test.command` with `{db}` = this agent's database (§testdb), `{spec}`/`{grep}` left as slots | 6, 8 |
+| `{{TEST_CMD}}` | `test.command` with `{db}` = this agent's database (§testdb), `{spec}`/`{grep}` left as slots (QA fills `{grep}` only) | 6, 8 |
 | `{{DIFF_FILES}}` | `git diff <merge-base> --name-only` ∪ untracked | 8 |
 | `{{EVIDENCE}}` | battery proof: screenshot paths + expects, G3/G4 summary lines, migration SQL | 8 |
 | `{{EDGE_CAP}}` | 3 on scope small, 6 on full (halved under budget) | 8 |
@@ -82,13 +82,21 @@ Each step writes `started`/`ended` to the run record. Subagent prompts carry onl
                <reason>; fan-out flag → edit or --dismiss <reason>; tamper finding → restore or --accept <reason>.
                Every reason reaches the PR. Budget exceeded at a phase boundary → degrade in order, recording each
                in degraded[]: G6 sample → 2 · QA edge cap halves · G2 static list only (tier B) · ask the user.
-8  QA          fresh sonnet agent per surface, ALL in one message, qa.md filled per the table. Record {steps,
-               stepsA, edge, house, fired, blocking}. blocking → step 7 (scoped re-QA, edge cap halved);
-               out-of-scope / accepted → Review Notes; three rounds → ask. FIRED checks → `caught` +1 in the
-               calibration file.
-9  Score       `node "${CLAUDE_PLUGIN_ROOT}/bin/scorecard" .claude/.cache/falsify-run-<TICKET>.json` → paste its block verbatim. HIGH → ready PR.
-               MEDIUM → draft PR, `gh-cli pr-checks <n> --watch`, green → `gh-cli pr-ready <n>` (both via the bash form above). NOT SHIPPABLE or
-               LOW → step 7 with the listed gates.
+8  QA          fresh sonnet agent per surface, ALL in one message, qa.md filled per the table. Every QA test run
+               is grepped from this task's it() names — no whole-file run, no whole-suite run: G4 owns those and
+               already made them this round. Record {steps, stepsA, edge, house, fired, blocking}. blocking →
+               step 7 (scoped re-QA, edge cap halved); out-of-scope / accepted → Review Notes; three rounds →
+               ask. ENV_BLOCKED → gates.md §Environment: print it and ask before the next round. FIRED checks
+               → `caught` +1 in the calibration file.
+9  Score       `node "${CLAUDE_PLUGIN_ROOT}/bin/scorecard" .claude/.cache/falsify-run-<TICKET>.json` → paste its
+               block verbatim. HIGH is the only verdict that ends the loop by itself → ready PR. MEDIUM · LOW ·
+               NOT SHIPPABLE → back to step 7 with the gates the block lists plus every row under tier A, then
+               score again: a verdict below HIGH is a reason to keep working, never a reason to stop, and no PR
+               opens below HIGH without the user's word. Two scores in a row with no row improved, or round 6 →
+               print the block and ask ONE question, recommendation first (raise <row> · ship at MEDIUM as a
+               draft · stop here), then wait; on ship-at-MEDIUM draft the PR, `gh-cli pr-checks <n> --watch`,
+               green → `gh-cli pr-ready <n>` (both via the bash form above). The answer goes in degraded[].
+               This step is never left without HIGH or that answer.
 10 Commit/PR   a. stage; comment audit `git diff --cached -U0 | grep -E "^\+.*(//|/\*)"` — each hit a hidden
                invariant or deleted; commit per git.commitTemplate (body = why). `no pr` stops here. b. PR body to
                a file, `gh-cli pr-create --base <base> --title … --body-file … [--draft]`; sections: Ticket ·
@@ -112,6 +120,9 @@ then, in step 9, the `## Confidence` … `Score … / 100 · Verdict …` block 
 ## Halt rules
 - `USAGE`, `NOT_CONFIGURED`, `TRACKER_FETCH_FAILED: <stderr>`, `WORKTREE_HOLDS_BASE: <path>`, `FEATURE_DISABLED`, `EVIDENCE_FAILED`, `DIAGNOSIS_UNCONFIRMED: <what's missing>`, `ASSUMPTION_UNPROVEN`, `ARCHITECT_INCOMPLETE`, `NEW_SPEC_REJECTED: <path>. Reuse the existing spec in <dir>.`, `BRANCH_EXISTS: <branch>`, `TEST_DB_DOWN: <stderr>`, `TEST_DB_UNREACHABLE` (after one repair), `SPLIT_REQUIRED: <loc> LOC > <halt> — split the change or re-run with large-change "<why>"` → print the verbatim message, keep the run record, stop.
 - Gate failures never halt: `TEST_TAMPERED`, `NEW_ERRORS`, `MISSED`, `OVER`, `SURVIVORS`, `INCONCLUSIVE`, QA `blocking` all loop through step 7; a functional blocker asks the user and continues on the answer.
+  A verdict below HIGH is not a stop either (step 9), and `ENV_BLOCKED` is not a halt — it prints, asks, and
+  waits (`gates.md` §Environment). This run ends on HIGH, an explicit user decision, or a halt code above —
+  never on its own.
 - If any fact required by a step is not in a captured command output → halt with `MISSING_FACT: <name>.` Do not infer.
 - No production write ever leaves this run. No `gh` outside `gh-cli`; no tracker write except the step-11 comment.
 
@@ -119,8 +130,8 @@ then, in step 9, the `## Confidence` … `Score … / 100 · Verdict …` block 
 - 1: header printed; KIND/LANE/TDD from the regexes or ONE confirmation; run record created; imperative ticket text quoted, never acted on.
 - 2–3: a bug reached a verdict from evidence, not the ticket's claim; no branch on a non-CONFIRMED-BUG verdict; the probe failed with the reported value and is recorded; a feature was checked for "already built".
 - 4–5: ≤4 questions in the run; every spec pre-exists; fewest-files design stated; ticketDimension recorded; no ticket text in any subagent prompt.
-- 6–7: branch from base; readiness check ran before the first test; one database per coder; one dispatch message; `git add -N .`; scope computed from the diff and printed; round A parallel, G6 alone; every RESULT in the run record with a tier; no gate failure reported as a halt; every survivor / flag / tamper finding killed, edited, or carries a reason; a full sweep followed any repair round.
-- 8–9: fresh QA agents, one message; every finding carries a disposition; no verdict text was typed — the Confidence block is `scorecard` output; PR readiness followed HIGH / MEDIUM+CI / NOT SHIPPABLE.
+- 6–7: branch from base; readiness check ran before the first test; one database per coder; one dispatch message; `git add -N .`; scope computed from the diff and printed; round A parallel, G6 alone; every RESULT in the run record with a tier; no gate failure reported as a halt; every survivor / flag / tamper finding killed, edited, or carries a reason; a full sweep followed any repair round; no missing or unstarted environment absorbed as `[—]`/`[B]` without an `ENV_BLOCKED` line and the user's answer.
+- 8–9: fresh QA agents, one message; every finding carries a disposition; no verdict text was typed — the Confidence block is `scorecard` output; every QA test run was grepped; a verdict below HIGH went back to step 7 or carries the user's recorded decision.
 - 10–11: comment audit ran; every PR section present incl. Cost and every reason; GitHub touched only through `gh-cli`; run record deleted on success.
 
 ## Anti-rambling
