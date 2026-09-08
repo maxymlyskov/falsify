@@ -29,7 +29,8 @@ Command: `scorecard .claude/.cache/falsify-run-<TICKET>.json` → prints the `##
    RealWorld, Behaviors, …) is tier B → verdict capped at `MEDIUM`.
 
 Verdict: `HIGH ≥ 90 · MEDIUM 75–89 · LOW < 75 · NOT SHIPPABLE` on step-1 failure. Exit 0 on HIGH/MEDIUM,
-1 otherwise. Arithmetic: the priors sum to 110 for a bug and 90 for a feature, so Regression at B alone
+1 otherwise — the exit code reports the arithmetic, not permission to ship: only HIGH lets step 9 open a
+PR on its own, and MEDIUM's exit 0 still returns to the battery unless the user says otherwise. Arithmetic: the priors sum to 110 for a bug and 90 for a feature, so Regression at B alone
 gives 93.2 (bug) / 91.7 (feature) — HIGH; Regression + Fan-out at B gives 88.6 / 86.1 — MEDIUM. Two
 inherited rows on important dimensions is where PRs go wrong; that boundary is the intended behaviour.
 

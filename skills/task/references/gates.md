@@ -11,6 +11,25 @@ Tier rule (written by the orchestrator when it records a gate): `A` = this run e
 `B` = inherited, asserted, or proxy (state the reason); `—` = structurally inapplicable with a stated
 reason. A `pass:null` result is recorded as-is; the scorecard maps it to `—` with the code as the reason.
 
+## Environment — a gate that could not run is never absorbed
+`—` is for a gate that is **structurally inapplicable**: the diff holds no file of the kind it measures
+(`NO_TARGETS`, `NO_FUNCTIONS`, no spec in the worklist). A gate whose *tool* is missing, unconfigured or
+not running is a different thing, and it is never downgraded on the agent's own authority. Record the
+result, then print one line per blocked gate
+
+```
+ENV_BLOCKED: <gate> — <the command that failed | the config key that is null> — costs <row> tier <B|—>
+```
+
+and ask the user ONE question, recommendation first: start it · configure it · proceed at the stated tier.
+Wait for the answer; no further gate runs past that print. A "proceed" goes into `degraded[]` in the
+user's own words and rides into the PR. Covers `NO_TYPESCRIPT` while a typed file is in the diff ·
+`ui.screenshot` null, or exiting non-zero, on a frontend diff · a preview recipe that will not run ·
+`db.url` null with a migration in the diff · `gates.clean.command` null · G6 `INCONCLUSIVE` ·
+`TEST_DB_DOWN` and readiness timeouts (`recipes.md §testdb`) · any surface a QA agent reports down.
+Missing environment is the one failure class that has to reach the user before the run continues: absorb
+it quietly and "we could not check this" gets filed as "we checked this".
+
 Every threshold below states its provenance. Sources in full: `why.md`.
 
 ## G0 · Diff size — hard
@@ -85,7 +104,7 @@ Every threshold below states its provenance. Sources in full: `why.md`.
 - Pass: no `OVER` — a new or grown function above either threshold. Simplify inline (guard clauses,
   collapse redundant branches, merge duplicated paths); never touch lines outside this branch's diff.
   `PREEXISTING` is report-only. The result names the `worst` touched function for the scorecard.
-- N/A: `NO_TARGETS`, `NO_FUNCTIONS`, `NO_TYPESCRIPT` (fix the environment). Tier: A.
+- N/A: `NO_TARGETS`, `NO_FUNCTIONS`. `NO_TYPESCRIPT` → §Environment (fix it, do not score around it). Tier: A.
 
 ## G6 · Mutation
 - Defect class: tests that run the code but assert nothing about it.
@@ -100,8 +119,8 @@ Every threshold below states its provenance. Sources in full: `why.md`.
 - Pass: `survivors: []`, `inconclusive: 0`, `timeouts: 0`. A survivor is an added line no test asserts:
   add the killing `it()` (public interface) and re-run G3 → G6, or mark it `--equivalent` with a one-line
   reason that reaches the PR's `## Mutation survivors`. `INCONCLUSIVE` = the runner exited non-zero
-  without a failing test (crash, wrong cwd, type error) — fix the run, never count it. **No kill-rate
-  threshold** (ADR-0004). Scope `small` → sample `gates.mutation.small` (4); `full` → `max` (6).
+  without a failing test (crash, wrong cwd, type error) — §Environment: fix the run, never count it.
+  **No kill-rate threshold** (ADR-0004). Scope `small` → sample `gates.mutation.small` (4); `full` → `max` (6).
 - **Runs alone.** The only gate that writes to the working tree: the G4 runs and every QA agent must have
   returned before it starts, or their test run reads a mutated file and fails for a reason nobody can
   distinguish from a real one.
@@ -117,15 +136,16 @@ Every threshold below states its provenance. Sources in full: `why.md`.
   (G4, else G3) stands as proxy.
 - Pass: screenshot shows the expected state with 0 console errors / migration round-trips / proxy
   recorded. Tier: A for a screenshot or migration proof; B for the proxy
-  (`result:null, tier:"B", reason:"G4 whole-spec run stands as proxy"`). `ui.screenshot` absent and a
-  frontend file changed → `B` with reason `no screenshot command configured` (setup can add one).
+  (`result:null, tier:"B", reason:"G4 whole-spec run stands as proxy"`). `ui.screenshot` absent or failing
+  and a frontend file changed → §Environment first; `B` with reason `no screenshot command configured` only
+  once the user has said to proceed (setup can add one instead).
 
 ## G8 · Cleanliness
 - Defect class: junk that taxes reviewers.
 - Source: Bacchelli & Bird, ICSE 2013 (defects are 14% of review comments; the value is understanding).
 - Command: `gates.clean.command` (a formatter/linter with `--fix`) on the branch diff. If it changed any
   file → re-run G1 + G3 + G5 in parallel. Record `{pass:true, fixes, findings}`.
-- N/A: `gates.clean.command` null → `—` with reason `not configured`. Tier: A.
+- N/A: `gates.clean.command` null → §Environment, then `—` with reason `not configured`. Tier: A.
 
 ## QA · Adversarial QA — hard
 - Defect class: defects the author's tests could not imagine.
@@ -135,8 +155,11 @@ Every threshold below states its provenance. Sources in full: `why.md`.
 - Command: one fresh `sonnet` agent per surface, `prompts/qa.md` filled per the placeholder table in
   `SKILL.md`, all surfaces in one message. Record `{steps, stepsA, edge, house, fired, blocking}` —
   `stepsA` = procedure steps with `[A]` evidence.
-- Pass: `blocking: 0`. A `blocking` finding enters the repair loop; `out-of-scope` / `accepted` →
-  `## Review Notes`. Three rounds without PASS → ask the user with the findings verbatim.
+- Every test run a QA agent makes is grepped: `test.command` with `{grep}` filled from the `it()` names in
+  the worklist proofs. No whole-file run, no whole-suite run — G4 already ran the whole specs that can
+  regress, this round, so a QA rerun of them proves nothing and costs minutes.
+- Pass: `blocking: 0` and no `ENV_BLOCKED` (§Environment). A `blocking` finding enters the repair loop;
+  `out-of-scope` / `accepted` → `## Review Notes`. Three rounds without PASS → ask the user with the findings verbatim.
 - Tier: the row's value is `stepsA / steps`.
 
 ## Probe · Diagnosis (bugs)
