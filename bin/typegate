@@ -60,16 +60,18 @@ let baseErrors = null;
 if (!flags['no-cache'] && fs.existsSync(cacheFile)) { try { baseErrors = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch (e) { baseErrors = null; } }
 if (!baseErrors) {
   const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'falsify-typegate-wt-'));
+  const junctions = [];
   try {
     execSync(`git worktree add --detach ${JSON.stringify(wt)} ${base}`, { cwd: root, stdio: 'ignore' });
     for (const r of roots) {
       const nm = path.join(root, r, 'node_modules');
       const target = path.join(wt, r, 'node_modules');
-      if (fs.existsSync(nm) && !fs.existsSync(target)) fs.symlinkSync(nm, target, 'junction');
+      if (fs.existsSync(nm) && !fs.existsSync(target)) { fs.symlinkSync(nm, target, 'junction'); junctions.push(target); }
     }
     baseErrors = checkTree(wt);
     fs.writeFileSync(cacheFile, JSON.stringify(baseErrors));
   } finally {
+    for (const j of junctions) { try { fs.unlinkSync(j); } catch (e) { /* best effort */ } }
     try { execSync(`git worktree remove --force ${JSON.stringify(wt)}`, { cwd: root, stdio: 'ignore' }); } catch (e) { /* best effort */ }
     try { fs.rmSync(wt, { recursive: true, force: true }); } catch (e) { /* best effort */ }
   }
