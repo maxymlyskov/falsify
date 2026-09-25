@@ -119,3 +119,12 @@ test('missing record or weights is ok:false with exit 2', () => {
   assert.equal(r.status, 2);
   assert.match(r.stdout, /BAD_RECORD/);
 });
+
+test('a gate entry with neither result nor reason is BAD_RECORD, exit 2, the gates named', () => {
+  const rec = record();
+  rec.gates.G2 = { ok: true, pass: false, code: 'MISSED', missed: [{ file: 'src/deposit.mapper.ts' }], tier: 'A' };
+  const { code, result } = run(rec);
+  assert.equal(code, 2);
+  assert.equal(result.code, 'BAD_RECORD');
+  assert.deepEqual(result.gates, ['G2']);
+});
