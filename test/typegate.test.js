@@ -1,6 +1,8 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { makeRepo } = require('./helpers');
 
 // A stand-in type checker so the tests need no `typescript` install. It reports, in tsc's --pretty
@@ -90,4 +92,14 @@ test('--roots selects sub-projects', (t) => {
   const { result } = r.gate('typegate', 'main --roots server,web --tsc "node fake-tsc.js" --no-cache');
   assert.deepEqual(result.roots, ['server', 'web']);
   assert.equal(result.pass, true);
+});
+
+test('the base worktree cleanup leaves the repository\'s node_modules in place', (t) => {
+  const r = repo(t, { '.gitignore': 'node_modules/\n' });
+  r.write('node_modules/some-pkg/index.js', 'module.exports = 1;\n');
+  r.write('src/a.ts', 'export const a: number = 2;\n');
+  r.commit();
+  const { result } = r.gate('typegate', `main ${TSC}`);
+  assert.equal(result.pass, true);
+  assert.equal(fs.existsSync(path.join(r.dir, 'node_modules', 'some-pkg', 'index.js')), true);
 });
