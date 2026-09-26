@@ -17,6 +17,7 @@ files as fully added. Thresholds carry their provenance in the result.
 | `complexity <base> [--cyclomatic 10] [--cognitive 15]` | G5 complexity | `checked, worst, over[], preexisting[], thresholds` | `OVER` |
 | `mutants <base> "<test cmd>" [max] [flags]` | G6 mutation | `candidates, tried, killed, survivors[], equivalent[], inconclusive, timeouts, cwd, baseline` | `SURVIVORS`, `INCONCLUSIVE`, `TIMEOUTS`; `SPEC_NOT_FOUND`, `BASELINE_RED` (exit 2) |
 | `tamper <base> [--accept f:l=why]` | hard | `findings[{file, line, kind, text}], accepted[]` | `TEST_TAMPERED` |
+| `ignores --detect \| --write <own\|foreign>` | setup | `ownership, view` (detect) / `ownership, file, added` (write) | `BAD_ARGS` |
 | `scorecard <run-record.json>` | verdict | `score, verdict, hardFailed[], capped, rows, cost` — prints `## Confidence` first | exit 1 below MEDIUM |
 
 Weights and hard-gate list: `scorecard.weights.json` (each weight is a declared prior; see ADR-0003).

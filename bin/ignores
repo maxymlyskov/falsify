@@ -1,0 +1,24 @@
+#!/usr/bin/env node
+'use strict';
+// Repo-ownership gate for /falsify:setup. Own repos (write access, not a fork) get an addition to the
+// tracked .gitignore; foreign repos (fork, read-only, or unreadable) get falsify's own paths in the
+// local, untracked exclude file instead, so no tracked file is ever touched.
+// Usage: ignores --detect | ignores --write <own|foreign>
+
+const { emit, usage, parseArgs } = require('../lib/result');
+const { sh, ownership, writeIgnores } = require('../lib/git');
+
+const NAME = 'IGNORES';
+const USAGE = 'usage: ignores --detect | --write <own|foreign>';
+const { positional, flags } = parseArgs(process.argv.slice(2), { booleans: ['detect'] });
+
+if (positional.length === 0 && flags.detect === true && flags.write === undefined) {
+  let view = null;
+  try { view = JSON.parse(sh('gh repo view --json viewerPermission,isFork')); } catch (e) { view = null; }
+  emit(NAME, { pass: true, ownership: ownership(view), view });
+} else if (positional.length === 0 && flags.write !== undefined && flags.detect === undefined && ['own', 'foreign'].includes(flags.write)) {
+  const { file, added } = writeIgnores(process.cwd(), flags.write);
+  emit(NAME, { pass: true, ownership: flags.write, file, added });
+} else {
+  usage(NAME, USAGE);
+}

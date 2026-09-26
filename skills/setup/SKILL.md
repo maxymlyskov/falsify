@@ -30,7 +30,8 @@ Ask one question at a time, detected default first, recommendation and a one-lin
                 readyCheck, dbNameEnv, dbCreate}, db.url.
 4 Git           Detect default branch and remote. Ask base branch, branch template ({id} {slug}), commit template
                 ({type} {what} {id}). Run `git fetch <remote> <base>` and `git merge-base <remote>/<base> HEAD`.
-                Writes git.{remote, base, branchTemplate, commitTemplate}.
+                Ownership: `node "${CLAUDE_PLUGIN_ROOT}/bin/ignores" --detect` → `own | foreign`; confirm it.
+                Writes git.{remote, base, branchTemplate, commitTemplate, ownership}.
 5 Type check    Detect tsconfig roots. Propose typecheck.roots and typecheck.command. Run `node "${CLAUDE_PLUGIN_ROOT}/bin/typegate"
                 <base> --roots … --tsc …` → RESULT must be ok:true. Writes typecheck.{roots, command}.
 6 UI            Detect playwright / a dev-server script. Ask: screenshot command with {route} {expect} {out}, or
@@ -48,7 +49,8 @@ Ask one question at a time, detected default first, recommendation and a one-lin
                 threshold records `"provenance": "user-set: <reason>"`. Writes gates.
 11 Write        Print the full config and the diff vs the existing file. Confirm → write
                 `.claude/falsify.config.json` with every `verified` field. Create `.claude/falsify-qa-calibration.md`
-                from the template if absent. Add `.claude/.cache/` to .gitignore if missing.
+                from the template if absent. Run `node "${CLAUDE_PLUGIN_ROOT}/bin/ignores" --write <git.ownership>`
+                and print its `file` and `added`.
 ```
 
 ## Output
@@ -57,7 +59,7 @@ Ask one question at a time, detected default first, recommendation and a one-lin
 tracker     <kind> — verified: <ticket> "<title>"
 test        <command> — verified: <spec> → <pass line>
 test db     <setup | none> · ready <check | none> · per-agent db <env | none> · migrations <db.url | none>
-git         <remote>/<base> · branches <template> · commits <template> — verified: merge-base <sha>
+git         <remote>/<base> · <own | foreign> · branches <template> · commits <template> — verified: merge-base <sha>
 typecheck   roots <…> — verified: TYPES_RESULT base <n> errors
 ui          <command | none> — verified: <path.png> | skipped
 evidence    <n> read-only tools | none
@@ -77,6 +79,7 @@ Written: .claude/falsify.config.json   Next: /falsify:task <ticket>
 - No question was asked whose answer the detection step already established with certainty; every question showed its detected default.
 - Nothing was posted to the tracker; the handoff verification was a dry run.
 - The printed diff matches the written file.
+- `ignores --write` ran with the confirmed ownership; on a foreign repo `git status --porcelain` shows no tracked file changed by setup.
 
 ## Anti-rambling
 Do not use any other tools or do anything else.
