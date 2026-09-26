@@ -1,0 +1,73 @@
+#!/usr/bin/env node
+'use strict';
+// The only writer of the fields bin/stop-hook reads on a run record (shape in
+// skills/task/references/scorecard.md). Usage:
+//   runrec <record.json> question             pendingQuestion:true — the next stop is allowed once.
+//   runrec <record.json> halt <CODE> [message] halt {code, message, at}, ended now, run stays open below.
+//   runrec <record.json> end                   ended now.
+//   runrec <record.json> resume                releases the record (session, stop counters) so the resuming
+//                                               session claims it on its first stop.
+//   runrec <record.json> score                 runs bin/scorecard on the record, stores
+//                                               score {score, verdict, at, fingerprint}, printing the
+//                                               scorecard's own block before this script's RESULT line.
+
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const { emit, usage, parseArgs } = require('../lib/result');
+const { save, fingerprint } = require('../lib/runrec');
+
+const NAME = 'RUNREC';
+const { positional } = parseArgs(process.argv.slice(2));
+const [file, verb, ...rest] = positional;
+if (!file) usage(NAME, 'usage: runrec <record.json> question | halt <CODE> [message] | end | resume | score');
+
+let rec;
+try { rec = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { emit(NAME, { ok: false, pass: null, code: 'BAD_RECORD', message: String(e.message) }); }
+
+const now = () => new Date().toISOString();
+
+// The record lives at <root>/.claude/.cache/<name>.json; derive root from that, falling back to the
+// record's own directory when it isn't nested that way (e.g. an ad-hoc record in a test fixture).
+function rootFromRecordPath(p) {
+  const abs = path.resolve(p);
+  const marker = `${path.sep}.claude${path.sep}.cache${path.sep}`;
+  const idx = abs.lastIndexOf(marker);
+  return idx > -1 ? abs.slice(0, idx) : path.dirname(abs);
+}
+const root = rootFromRecordPath(file);
+
+if (verb === 'question') {
+  rec.pendingQuestion = true;
+  save(file, rec);
+  emit(NAME, { pass: true, action: 'question', pendingQuestion: true });
+} else if (verb === 'halt') {
+  const code = rest[0];
+  if (!code) usage(NAME, 'usage: runrec <record.json> halt <CODE> [message]');
+  rec.halt = { code, message: rest.slice(1).join(' ') || null, at: now() };
+  rec.ended = now();
+  save(file, rec);
+  emit(NAME, { pass: true, action: 'halt', halt: rec.halt, ended: rec.ended });
+} else if (verb === 'end') {
+  rec.ended = now();
+  save(file, rec);
+  emit(NAME, { pass: true, action: 'end', ended: rec.ended });
+} else if (verb === 'resume') {
+  delete rec.session;
+  delete rec.stop;
+  save(file, rec);
+  emit(NAME, { pass: true, action: 'resume' });
+} else if (verb === 'score') {
+  const r = spawnSync(process.execPath, [path.join(__dirname, 'scorecard'), file], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const out = r.stdout || '';
+  process.stdout.write(out);
+  const line = out.trim().split('\n').reverse().find((l) => /_RESULT \{/.test(l));
+  const scored = line ? JSON.parse(line.slice(line.indexOf('{'))) : null;
+  if (!scored || scored.ok === false) emit(NAME, { ok: false, pass: null, code: 'SCORECARD_FAILED', message: (scored && scored.message) || (r.stderr || '').trim() || 'scorecard produced no result' });
+  rec.score = { score: scored.score, verdict: scored.verdict, at: now() };
+  rec.score.fingerprint = fingerprint(rec, root);
+  save(file, rec);
+  emit(NAME, { pass: true, action: 'score', score: rec.score });
+} else {
+  usage(NAME, `unknown verb: ${verb}`);
+}
