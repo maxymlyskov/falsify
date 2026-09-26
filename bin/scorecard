@@ -71,7 +71,7 @@ fromGate('Regression', 'G4', (r, e) => `${r.specs === 'ALL' ? 'whole suite' : `s
 fromGate('FanOut', 'G2', (r) => {
   const names = [...(r.missed || []).map((m) => `${path.basename(m.file)}, conf ${m.conf}`), ...(r.static || []).map((s) => path.basename(s.file))];
   const n = names.length + (r.dismissed || []).length;
-  return `${n} flagged${names.length ? ` (${names.join('; ')})` : ''}${(r.dismissed || []).length ? ` — ${r.dismissed.length} dismissed with reasons` : ''}${n && !names.length ? ' — edited' : ''}`;
+  return `${n} flagged${names.length ? ` (${names.join('; ')})` : ''}${(r.dismissed || []).length ? ` — ${r.dismissed.length} dismissed with reasons` : ''}`;
 });
 fromGate('Complexity', 'G5', (r) => (r.worst ? `worst ${r.worst.fn} cyclomatic ${r.worst.cyclomatic} / ${r.thresholds.cyclomatic} · cognitive ${r.worst.cognitive} / ${r.thresholds.cognitive}` : `${r.checked} fns checked, ${(r.over || []).length} over, ${(r.preexisting || []).length} preexisting`));
 fromGate('Mutation', 'G6', (r) => `killed ${r.killed} of ${r.tried} tried (candidates ${r.candidates}) · survivors ${(r.survivors || []).length} · equivalent ${(r.equivalent || []).length}${r.inconclusive ? ` · inconclusive ${r.inconclusive}` : ''}${r.timeouts ? ` · timeouts ${r.timeouts}` : ''}`);
