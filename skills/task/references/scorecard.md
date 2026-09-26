@@ -44,7 +44,7 @@ it records the gate; the script never upgrades one.
 Diagnosis     CONFIRMED-BUG — probe deposit.spec.ts "charges $50 for a 2-lane package" expected 50 got 0 [A]
 Behaviors     1 RED→GREEN                                                                    [A]
 Regression    select-specs: 2 specs, 489 passing, 0 failing                                  [A]
-Fan-out       1 flagged (deposit.mapper.ts, conf 0.8) — edited in round 2                    [A]
+Fan-out       1 flagged — 1 dismissed with reasons                                           [A]
 Complexity    worst calculateDeposit cyclomatic 7 / 10 · cognitive 9 / 15                    [A]
 Mutation      killed 3 of 3 tried (candidates 3) · survivors 0 · equivalent 0                [A]
 Real-world    G4 whole owning spec ran                                                       [A]

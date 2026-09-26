@@ -128,3 +128,10 @@ test('a gate entry with neither result nor reason is BAD_RECORD, exit 2, the gat
   assert.equal(result.code, 'BAD_RECORD');
   assert.deepEqual(result.gates, ['G2']);
 });
+
+test('a fan-out whose only flag was dismissed does not claim an edit', () => {
+  const rec = record();
+  rec.gates.G2 = ok({ missed: [], static: [], dismissed: [{ file: 'src/deposit.mapper.ts', reason: 'read-only consumer' }] });
+  const { out } = run(rec);
+  assert.match(out, /Fan-out +1 flagged — 1 dismissed with reasons +\[A\]/);
+});
