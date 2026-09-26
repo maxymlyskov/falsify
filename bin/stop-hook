@@ -1,0 +1,149 @@
+#!/usr/bin/env node
+'use strict';
+// Stop hook (hooks/hooks.json): a /task run must not end its turn while its run record is open and
+// below a computed HIGH, unless it recorded a halt, a question to the user, or an intentional end.
+// Reads the Stop event JSON on stdin ({session_id, cwd, stop_hook_active, ...}); printing nothing lets
+// the turn end, printing `{"decision":"block","reason":"..."}` on stdout makes Claude continue with
+// `reason` as its next input. Never throws: a hook that blocks on its own bug is worse than a missed
+// nudge, so any internal error is logged to <root>/.claude/.cache/stop-hook.err and the stop is allowed.
+// Bounds live in the record (rec.stop) so they survive compaction; each is a named halt. Priors, unmeasured.
+
+const fs = require('node:fs');
+const path = require('node:path');
+const { recordsDir, listOpen, save, fingerprint } = require('../lib/runrec');
+
+const MAX_BLOCKS = 10;
+const MAX_SAME = 2;
+const DEFAULT_CEILING_MIN = 240;
+const BUDGET_FACTOR = 3;
+const STEP_NAMES = { 1: 'Intake', 2: 'Investigate', 3: 'Probe', 4: 'Grill', 5: 'Design gate', 6: 'Build', 7: 'Battery', 8: 'QA', 9: 'Score', 10: 'Commit/PR', 11: 'Handoff' };
+
+function readStdin() {
+  try { return JSON.parse(fs.readFileSync(0, 'utf8')); } catch (e) { return {}; }
+}
+
+function block(reason) {
+  process.stdout.write(`${JSON.stringify({ decision: 'block', reason })}\n`);
+}
+
+function haltRun(file, rec, code, message) {
+  const at = new Date().toISOString();
+  rec.halt = { code, message, at, by: 'stop-hook' };
+  rec.ended = at;
+  save(file, rec);
+}
+
+function highestStartedStep(rec) {
+  const started = Object.keys(rec.steps || {}).filter((k) => rec.steps[k] && rec.steps[k].started).map(Number);
+  return started.length ? Math.max(...started) : null;
+}
+
+// QA is always read flat (steps/stepsA/blocking), as the scorecard reads it; every other gate is {result, tier, reason}.
+function qaState(qa) {
+  if ((qa.blocking || 0) > 0) return 'FAIL';
+  return (qa.stepsA || 0) < (qa.steps || 0) ? 'n/a' : null;
+}
+
+function gateState(g) {
+  if (!g) return 'FAIL';
+  if (g.tier === '—') return null;
+  const r = g.result;
+  if (r == null) return g.tier === 'B' && g.reason ? 'proxy' : 'FAIL';
+  if (r.pass === false) return 'FAIL';
+  return r.pass === null ? 'n/a' : null;
+}
+
+function failingGates(rec) {
+  return Object.entries(rec.gates || {})
+    .map(([name, g]) => [name, name === 'QA' && g ? qaState(g) : gateState(g)])
+    .filter(([, state]) => state)
+    .map(([name, state]) => `${name} ${state}`);
+}
+
+function scoreLine(rec, currentFp) {
+  if (!rec.score) return 'no score yet';
+  return `score ${rec.score.verdict} ${rec.score.score}${rec.score.fingerprint !== currentFp ? ' (stale)' : ''}`;
+}
+
+function finishReason(file, rec, blocks) {
+  return [
+    `ticket ${rec.ticket || 'unknown'} · ${scoreLine(rec, rec.score.fingerprint)} · block ${blocks}/${MAX_BLOCKS}`,
+    '',
+    `Score is HIGH but the run is still open. Finish the run: open the PR (step 10), then \`runrec ${file} end\`.`,
+  ].join('\n');
+}
+
+function keepGoingReason(file, rec, currentFp, blocks) {
+  const step = highestStartedStep(rec);
+  const stepText = step ? `step ${step} ${STEP_NAMES[step] || ''}`.trim() : 'no step started';
+  const notPassing = failingGates(rec);
+  return [
+    `ticket ${rec.ticket || 'unknown'} · ${stepText} · rounds ${rec.rounds ?? 0} · ${scoreLine(rec, currentFp)}`
+      + ` · gates: ${notPassing.length ? notPassing.join(', ') : 'none recorded'} · block ${blocks}/${MAX_BLOCKS}`,
+    '',
+    'The turn cannot end below a computed HIGH. Continue the run: repair what failed, re-run the gates '
+      + `whose inputs changed, then \`runrec ${file} score\` until HIGH, open the PR, and \`runrec ${file} end\`. `
+      + `If only the user can decide, \`runrec ${file} question\` before asking. If the run cannot continue, `
+      + `\`runrec ${file} halt <CODE>\` with a code from the task skill's Halt rules.`,
+  ].join('\n');
+}
+
+// The most recently written open record this session owns or can claim, so a stale record left by a
+// crashed session never shadows the active run. An unowned record is claimed by the first session that stops on it.
+function claim(root, sessionId) {
+  const mtime = (f) => { try { return fs.statSync(f).mtimeMs; } catch (e) { return 0; } };
+  const entry = listOpen(root)
+    .filter((e) => e.rec.session == null || e.rec.session === sessionId)
+    .sort((a, b) => mtime(b.file) - mtime(a.file))[0];
+  if (entry && entry.rec.session == null && sessionId) { entry.rec.session = sessionId; save(entry.file, entry.rec); }
+  return entry || null;
+}
+
+function countStop(rec, fp) {
+  const stop = { blocks: 0, last: null, same: 0, ...rec.stop };
+  stop.same = stop.last === fp ? stop.same + 1 : 0;
+  stop.last = fp;
+  stop.blocks += 1;
+  rec.stop = stop;
+  return stop;
+}
+
+function wall(rec) {
+  const started = rec.started || (rec.steps && rec.steps['1'] && rec.steps['1'].started);
+  const ceilingMin = rec.budgetMin ? rec.budgetMin * BUDGET_FACTOR : DEFAULT_CEILING_MIN;
+  return { elapsedMin: started ? (Date.now() - new Date(started).getTime()) / 60000 : 0, ceilingMin };
+}
+
+// [code, message] when a bound is exceeded, else null. Counts this stop in rec.stop.
+function exceededBound(rec, fp) {
+  const stop = countStop(rec, fp);
+  if (stop.same >= MAX_SAME) return ['NO_PROGRESS', 'stop-hook: run state (steps, gates, score, working tree) unchanged across consecutive stops'];
+  if (stop.blocks > MAX_BLOCKS) return ['STOP_BUDGET', `stop-hook: exceeded ${MAX_BLOCKS} blocked stops without reaching a completed HIGH run`];
+  const { elapsedMin, ceilingMin } = wall(rec);
+  return elapsedMin > ceilingMin ? ['OVER_BUDGET', `stop-hook: wall time ${Math.round(elapsedMin)}m exceeded the ${ceilingMin}m ceiling`] : null;
+}
+
+const INPUT = readStdin();
+const ROOT = process.env.CLAUDE_PROJECT_DIR || INPUT.cwd || process.cwd();
+
+function main() {
+  const target = claim(ROOT, INPUT.session_id || null);
+  if (!target) return;
+  const { file, rec } = target;
+  if (rec.pendingQuestion) { rec.pendingQuestion = false; save(file, rec); return; }
+  const fp = fingerprint(rec, ROOT);
+  const bound = exceededBound(rec, fp);
+  if (bound) { haltRun(file, rec, ...bound); return; }
+  save(file, rec);
+  const highAndFresh = !!(rec.score && rec.score.verdict === 'HIGH' && rec.score.fingerprint === fp);
+  block(highAndFresh ? finishReason(file, rec, rec.stop.blocks) : keepGoingReason(file, rec, fp, rec.stop.blocks));
+}
+
+try {
+  main();
+} catch (e) {
+  try {
+    fs.mkdirSync(recordsDir(ROOT), { recursive: true });
+    fs.appendFileSync(path.join(recordsDir(ROOT), 'stop-hook.err'), `${new Date().toISOString()} ${e.stack || e}\n`);
+  } catch (e2) { /* nothing more we can do — still allow the stop */ }
+}

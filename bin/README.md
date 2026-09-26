@@ -19,6 +19,8 @@ files as fully added. Thresholds carry their provenance in the result.
 | `tamper <base> [--accept f:l=why]` | hard | `findings[{file, line, kind, text}], accepted[]` | `TEST_TAMPERED` |
 | `ignores --detect \| --write <own\|foreign>` | setup | `ownership, view` (detect) / `ownership, file, added` (write) | `BAD_ARGS` |
 | `scorecard <run-record.json>` | verdict | `score, verdict, hardFailed[], capped, rows, cost` — prints `## Confidence` first | exit 1 below MEDIUM |
+| `runrec <record.json> question\|halt <CODE> [msg]\|end\|score` | run-record writer | `action, pendingQuestion\|halt\|ended\|score` — the only writer of the fields the Stop hook reads | `BAD_RECORD`, `BAD_ARGS` (exit 2) |
+| `stop-hook` (reads Stop event JSON on stdin) | Stop hook | prints `{"decision":"block","reason":…}` or nothing | halts the run `NO_PROGRESS`/`STOP_BUDGET`/`OVER_BUDGET` instead of blocking forever |
 
 Weights and hard-gate list: `scorecard.weights.json` (each weight is a declared prior; see ADR-0003).
 

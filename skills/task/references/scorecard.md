@@ -78,3 +78,9 @@ Created in step 1, appended by every step, deleted in step 11 on success, kept o
 ```
 Gate fields the rows read: G3 `behaviors|passing, failing`; G4 `specs, passing, failing`; G7 `text`;
 G8 `fixes, findings`; the others are the scripts' own RESULT objects.
+
+Stop-hook fields, written only by `bin/runrec` (and `stop` by `bin/stop-hook`):
+`session` (the terminal that owns the run) · `pendingQuestion` (lets one stop through while the user is asked) ·
+`halt {code, message, at}` and `ended` (the run may stop) · `score {score, verdict, at, fingerprint}` (`runrec score`;
+stale once the fingerprint moves) · `stop {blocks, last, same}` (bounds: 10 blocks, 2 stops without progress, wall
+3× `budgetMin` or 240 min, each a named halt — priors, unmeasured).

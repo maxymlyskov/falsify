@@ -1,0 +1,16 @@
+{
+  "description": "falsify: a /task run cannot end its turn while its run record is open below a computed HIGH",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/stop-hook\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
