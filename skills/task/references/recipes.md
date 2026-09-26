@@ -8,7 +8,7 @@ referenced from `SKILL.md` as `§name`. Gate scripts are run as `node "${CLAUDE_
 tracker.kind · tracker.idPattern · tracker.fetch ({id})            · tracker.comment ({id} {file}) | null
 test.command ({spec} {grep} {db}) · test.failRegex · test.specGlob · test.setup | null
 test.readyCheck | null · test.dbNameEnv | null · test.dbCreate ({db}) | null
-git.remote · git.base · git.branchTemplate ({id} {slug}) · git.commitTemplate ({type} {what} {id})
+git.remote · git.base · git.branchTemplate ({id} {slug}) · git.commitTemplate ({type} {what} {id}) · git.ownership (own | foreign)
 typecheck.roots · typecheck.command
 ui.screenshot ({route} {expect} {out}) | null
 db.url | null                    (a test database for migration proofs; never production)
