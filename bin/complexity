@@ -26,7 +26,7 @@ if (!ref || Number.isNaN(THRESHOLDS.cyclomatic) || Number.isNaN(THRESHOLDS.cogni
 const EXCLUDE = [/\.(spec|test)\.[cm]?[jt]sx?$/, /(^|\/)(__tests__|test|tests|e2e|migrations|fixtures)\//, /\.d\.ts$/, /(^|\/)(dist|build|node_modules)\//,
   ...(flags.exclude || []).map((s) => new RegExp(s))];
 
-const { root, base, files } = changedFiles(ref, { exts: ['.ts', '.tsx'] });
+const { root, base, files } = changedFiles(ref, { exts: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'] });
 const targets = files.filter((f) => f.added.length > 0 && !EXCLUDE.some((re) => re.test(f.path)) && fs.existsSync(path.join(root, f.path)));
 if (targets.length === 0) emit(NAME, { pass: null, code: 'NO_TARGETS', base, thresholds: THRESHOLDS, checked: 0, over: [], preexisting: [] });
 
@@ -135,7 +135,9 @@ function className(ts, node, sf) {
 }
 
 function measure(ts, source, file, addedLines) {
-  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const scriptKind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : file.endsWith('.jsx') ? ts.ScriptKind.JSX
+    : (file.endsWith('.js') || file.endsWith('.mjs') || file.endsWith('.cjs')) ? ts.ScriptKind.JS : ts.ScriptKind.TS;
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind);
   const out = new Map();
   const ordinals = new Map();
   const added = addedLines ? new Set(addedLines) : null;
