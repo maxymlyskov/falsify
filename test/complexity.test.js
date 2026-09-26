@@ -110,3 +110,20 @@ test('spec and migration files are excluded', (t) => {
   assert.equal(result.pass, null);
   assert.equal(result.code, 'NO_TARGETS');
 });
+
+test('a JavaScript source file is measured', (t) => {
+  const r = repo(t, { 'src/x.js': 'module.exports = 1;\n' });
+  r.write('src/busy.js', 'function busy(a) {\n  if (a > 1) { if (a > 2) { if (a > 3) { if (a > 4) { if (a > 5) { if (a > 6) { if (a > 7) { if (a > 8) { if (a > 9) { return 1; } } } } } } } } }\n  return 0;\n}\nmodule.exports = { busy };\n');
+  const { code, result } = r.gate('complexity', 'main');
+  assert.equal(code, 1, result && JSON.stringify(result));
+  assert.equal(result.over[0].fn, 'busy');
+});
+
+test('a .js file with JSX is parsed as JavaScript and its arrow function is named after its variable', (t) => {
+  const r = repo(t, { 'src/x.js': 'module.exports = 1;\n' });
+  const branches = Array.from({ length: 11 }, (_, i) => `{n > ${i} && <b>${i}</b>}`).join('');
+  r.write('src/view.js', `const View = (n) => (\n  <div>${branches}</div>\n);\nmodule.exports = { View };\n`);
+  const { code, result } = r.gate('complexity', 'main');
+  assert.equal(code, 1, result && JSON.stringify(result));
+  assert.equal(result.over[0].fn, 'View');
+});
