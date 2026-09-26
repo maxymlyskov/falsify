@@ -112,3 +112,46 @@ test('writeIgnores in a linked worktree writes the common exclude file', (t) => 
   assert.match(exclude, /\.claude\/falsify-qa-calibration\.md/);
   assert.match(exclude, /\.claude\/\.cache\//);
 });
+
+test('changedFiles includes an extensionless node script when .js files are asked for', (t) => {
+  const r = makeRepo({ 'bin/tool': '#!/usr/bin/env node\nconsole.log(1);\n', 'bin/run.sh': '#!/usr/bin/env bash\necho 1\n', 'bin/NOTES': 'plain text\n' });
+  t.after(r.cleanup);
+  r.branch('work');
+  r.write('bin/tool', '#!/usr/bin/env node\nconsole.log(2);\n');
+  r.write('bin/run.sh', '#!/usr/bin/env bash\necho 2\n');
+  r.write('bin/NOTES', 'more text\n');
+  r.commit('change');
+  const { files } = git.changedFiles('main', { cwd: r.dir, exts: ['.js'] });
+  assert.deepEqual(files.map((f) => f.path), ['bin/tool']);
+});
+
+test('changedFiles keeps extension matches next to node scripts and skips a deleted script', (t) => {
+  const r = makeRepo({ 'bin/old': '#!/usr/bin/env node\nconsole.log(0);\n', 'src/a.js': 'module.exports = 1;\n' });
+  t.after(r.cleanup);
+  r.branch('work');
+  r.run('git rm -q bin/old');
+  r.write('src/a.js', 'module.exports = 2;\n');
+  r.write('bin/new', '#!/usr/bin/env node\nconsole.log(1);\n');
+  const { files } = git.changedFiles('main', { cwd: r.dir, exts: ['.js'] });
+  assert.deepEqual(files.map((f) => f.path).sort(), ['bin/new', 'src/a.js']);
+});
+
+test('changedFiles skips an extensionless path that is not a readable file', (t) => {
+  const sub = makeRepo({ 'README': 'x\n' });
+  t.after(sub.cleanup);
+  const r = makeRepo({ 'src/a.js': 'module.exports = 1;\n' });
+  t.after(r.cleanup);
+  r.branch('work');
+  r.run(`git -c protocol.file.allow=always submodule add -q "${sub.dir.split('\\').join('/')}" vendor`);
+  const { files } = git.changedFiles('main', { cwd: r.dir, exts: ['.js'] });
+  assert.equal(files.some((f) => f.path === 'vendor'), false);
+});
+
+test('changedFiles treats a nodejs shebang as a node script', (t) => {
+  const r = makeRepo({ 'README.md': 'x\n' });
+  t.after(r.cleanup);
+  r.branch('work');
+  r.write('bin/legacy', '#!/usr/bin/nodejs\nconsole.log(1);\n');
+  const { files } = git.changedFiles('main', { cwd: r.dir, exts: ['.js'] });
+  assert.deepEqual(files.map((f) => f.path), ['bin/legacy']);
+});
